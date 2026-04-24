@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import L from 'leaflet';
+import { L } from '../../leafletSetup'; // sets window.L before plugins load
 import 'leaflet.heat';
 import 'leaflet.markercluster';
-import 'leaflet.markercluster/dist/MarkerCluster.css';
-import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { WARDS } from '../../data/wardData';
 
 // Mumbai bounds (for initial fit)

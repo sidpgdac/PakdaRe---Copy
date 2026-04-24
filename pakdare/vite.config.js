@@ -1,6 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// leaflet.heat and leaflet.markercluster use bare `L` as a global variable.
+// In Vite's ES module output, bare `L` doesn't resolve to window.L.
+// This plugin injects `import L from 'leaflet'` so `L` is a proper module binding.
+const leafletPluginFix = {
+  name: 'leaflet-plugin-global',
+  transform(code, id) {
+    if (id.includes('node_modules/leaflet.heat') || id.includes('node_modules/leaflet.markercluster')) {
+      return { code: `import L from 'leaflet';\n${code}`, map: null };
+    }
+  },
+};
+
 const CHUNK_MAP = {
   'vendor-react':    id => ['react', 'react-dom', 'react/'].some(p => id.includes(`/node_modules/${p}`)),
   'vendor-supabase': id => id.includes('/node_modules/@supabase/'),
@@ -13,7 +25,7 @@ const CHUNK_MAP = {
 };
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), leafletPluginFix],
   build: {
     rollupOptions: {
       output: {
