@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WARDS } from '../../data/wardData';
 import BeforeAfterSlider from '../ui/BeforeAfterSlider';
@@ -134,10 +134,19 @@ function PublicComplaintRow({ c, isExpanded, onToggle }) {
   );
 }
 
-export default function PublicComplaints({ complaints }) {
+export default function PublicComplaints({ complaints, fetchComplaintDetail }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState(null);
+  const [detailCache, setDetailCache] = useState({});
+
+  // Fetch photos for the expanded row (they're excluded from the list query)
+  useEffect(() => {
+    if (!expandedId || detailCache[expandedId] || !fetchComplaintDetail) return;
+    fetchComplaintDetail(expandedId).then(full => {
+      if (full) setDetailCache(prev => ({ ...prev, [expandedId]: full }));
+    });
+  }, [expandedId, detailCache, fetchComplaintDetail]);
 
   const filtered = useMemo(() => {
     let list = [...complaints];
@@ -227,7 +236,7 @@ export default function PublicComplaints({ complaints }) {
           {filtered.map(c => (
             <PublicComplaintRow
               key={c.id}
-              c={c}
+              c={detailCache[c.id] || c}
               isExpanded={expandedId === c.id}
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
             />

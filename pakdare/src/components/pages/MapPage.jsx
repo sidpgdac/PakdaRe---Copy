@@ -154,7 +154,17 @@ function buildDonutFeature(geojson) {
   };
 }
 
-export default function MapPage({ complaints, onWardClick }) {
+const CATEGORIES = {
+  'mosquito-nuisance':'Mosquito Nuisance','breeding-stagnant':'Stagnant Water',
+  'breeding-garbage':'Garbage Breeding','breeding-drain':'Drain Breeding',
+  'water-muddy':'Contaminated Water','water-smell':'Bad Water Smell',
+  'water-leakage':'Pipeline Leak','sewer-mix':'Sewage Mix',
+  'garbage':'Garbage','drain-block':'Blocked Drain',
+  'fever-cluster':'Fever Cluster','dengue-case':'Dengue','malaria-case':'Malaria',
+};
+const SEV_PILL = { critical:'p-crit', severe:'p-sev', moderate:'p-mod', minor:'p-min' };
+
+export default function MapPage({ complaints, onWardClick, fetchComplaintDetail }) {
   const mapRef = useRef(null);
   const mapInst = useRef(null);
   const layersRef = useRef({
@@ -177,6 +187,10 @@ export default function MapPage({ complaints, onWardClick }) {
   const [wardSheetOpen, setWardSheetOpen] = useState(false);
   // Sprint 2 — My Location FAB state
   const [locState, setLocState]         = useState('idle'); // idle | loading | ok | err
+  // Complaint photo sheet
+  const [complaintSheetId,   setComplaintSheetId]   = useState(null);
+  const [complaintSheetData, setComplaintSheetData] = useState(null);
+  const [loadingSheet,       setLoadingSheet]       = useState(false);
   const layerDDRef = useRef(null);
 
   // Single O(N) pass over complaints → per-ward stats map; replaces O(N×27×5) per render
@@ -245,7 +259,7 @@ export default function MapPage({ complaints, onWardClick }) {
       minZoom: 9
     });
     
-    map.fitBounds(MUMBAI_BOUNDS);
+    map.fitBounds(MUMBAI_BOUNDS, { padding: [30, 30] });
 
     const tileLyr = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap © CARTO',
@@ -492,14 +506,19 @@ export default function MapPage({ complaints, onWardClick }) {
       }
     });
 
-    // 3. Rebuild GPS pins (inside-Mumbai bounds only)
+    // 3. Rebuild GPS pins (inside-Mumbai bounds only) — tap opens photo sheet
     complaints.forEach(c => {
       if (!c.lat || !c.lng) return;
       if (c.lat < MUMBAI_BOUNDS[0][0] || c.lat > MUMBAI_BOUNDS[1][0] || c.lng < MUMBAI_BOUNDS[0][1] || c.lng > MUMBAI_BOUNDS[1][1]) return;
       const col = c.severity === 'critical' ? '#E31E24' : c.severity === 'severe' ? '#e07820' : c.severity === 'moderate' ? '#c8b800' : '#1a7a6e';
-      L.circleMarker([c.lat, c.lng], { radius: 8, fillColor: col, color: '#fff', weight: 2.5, fillOpacity: .92 })
-        .bindTooltip('📍 ' + (c.location || 'Real submission') + ' — ' + (c.severity || ''))
-        .addTo(layersRef.current.gps);
+      const pin = L.circleMarker([c.lat, c.lng], { radius: 10, fillColor: col, color: '#fff', weight: 2.5, fillOpacity: .92 });
+      pin.bindTooltip('📍 ' + (c.location || 'Citizen report'));
+      pin.on('click', () => {
+        setComplaintSheetId(c.id);
+        setComplaintSheetData(c);
+        setLoadingSheet(!!fetchComplaintDetail);
+      });
+      pin.addTo(layersRef.current.gps);
     });
 
     window.__onMapClick__ = (wid) => {
@@ -578,6 +597,18 @@ export default function MapPage({ complaints, onWardClick }) {
     return () => { if (mapInst.current) mapInst.current.removeLayer(rect); };
   }, []);
 
+  // Fetch full complaint (with photos) when sheet opens
+  useEffect(() => {
+    if (!complaintSheetId) return;
+    if (!fetchComplaintDetail) { setLoadingSheet(false); return; }
+    setLoadingSheet(true);
+    fetchComplaintDetail(complaintSheetId).then(full => {
+      if (full) setComplaintSheetData(full);
+      setLoadingSheet(false);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complaintSheetId]);
+
   // Close dropdown on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -590,24 +621,11 @@ export default function MapPage({ complaints, onWardClick }) {
   }, []);
 
   return (
-    <div className="page active">
-      <div className="page-hdr">
-        <div className="page-hdr-row">
-          <div>
-            <h1 className="page-title">Live Ward Map — Mumbai</h1>
-            <p className="page-sub">Real-time Leaflet map · Heatmap + bubble clusters · Click any bubble for ward profile · Geofenced to Mumbai</p>
-          </div>
-        </div>
-      </div>
-
+    <div className="map-full-wrap">
       <div className="map-wrap">
-        <div className="map-hdr">
-          <div>
-            <div className="map-hdr-t">Mumbai · 27 BMC Wards · Public Health Surveillance</div>
-            <div className="map-hdr-s">Live tiles · Leaflet.js + CartoDB Voyager · Real-time Filtering</div>
-          </div>
+        <div className="map-hdr" style={{ justifyContent: 'flex-end', padding: '6px 16px', minHeight: 0 }}>
 
-          {/* Layer Dropdown — DESKTOP ONLY (hidden on mobile via inline media query style) */}
+          {/* Layer Dropdown — DESKTOP ONLY */}
           <div className="map-layer-dd-wrap" ref={layerDDRef} style={{ display: 'var(--desktop-show, flex)' }}>
             <button
               className={`map-layer-btn ${layerDDOpen ? 'open' : ''}`}
@@ -791,7 +809,7 @@ export default function MapPage({ complaints, onWardClick }) {
                     </div>
 
                     {/* Scrollable ward list */}
-                    <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px', WebkitOverflowScrolling: 'touch' }}>
+                    <div style={{ flex: 1, overflowY: 'auto', padding: '6px 12px 12px', WebkitOverflowScrolling: 'touch' }}>
                       {sortedWards.map((w, i) => {
                         const maxTotal = sortedWards[0]?.total || 1;
                         const riskPct  = Math.round((w.total / maxTotal) * 100);
@@ -799,28 +817,64 @@ export default function MapPage({ complaints, onWardClick }) {
                           riskPct >= 75 ? '#E31E24' :
                           riskPct >= 50 ? '#e07820' :
                           riskPct >= 25 ? '#c8b800' : '#1a7a6e';
-                        const medals = ['🥇', '🥈', '🥉'];
+                        const riskBg =
+                          riskPct >= 75 ? 'rgba(227,30,36,0.08)' :
+                          riskPct >= 50 ? 'rgba(224,120,32,0.08)' :
+                          riskPct >= 25 ? 'rgba(200,184,0,0.07)' : 'rgba(26,122,110,0.07)';
+                        const rankBg =
+                          i === 0 ? 'linear-gradient(135deg,#f59e0b,#fbbf24)' :
+                          i === 1 ? 'linear-gradient(135deg,#94a3b8,#cbd5e1)' :
+                          i === 2 ? 'linear-gradient(135deg,#ea580c,#f97316)' : null;
+                        const rankTxt = i < 3 ? (i === 1 ? '#000' : '#fff') : riskColor;
                         return (
                           <button
                             key={w.id}
                             onClick={() => { focusWard(w); }}
                             style={{
-                              display: 'flex', alignItems: 'center', width: '100%', gap: 12, padding: 12,
-                              borderRadius: 16, border: selectedWard === w.id ? '1px solid var(--border)' : '1px solid transparent',
-                              background: selectedWard === w.id ? 'var(--glass-bg)' : 'transparent',
-                              cursor: 'pointer', textAlign: 'left', marginBottom: 2, transition: 'all 0.2s'
+                              display: 'flex', alignItems: 'center', width: '100%', gap: 12, padding: '10px 12px',
+                              borderRadius: 14,
+                              border: `1px solid ${selectedWard === w.id ? riskColor + '55' : 'transparent'}`,
+                              background: selectedWard === w.id ? riskBg : (i < 3 ? riskBg : 'transparent'),
+                              cursor: 'pointer', textAlign: 'left', marginBottom: 4,
+                              transition: 'all 0.18s',
                             }}
                           >
-                            <span style={{ fontSize: 16, fontWeight: 900, width: 28, textAlign: 'center', color: riskColor }}>
-                              {i < 3 ? medals[i] : `#${i + 1}`}
-                            </span>
+                            {/* Rank badge */}
+                            <div style={{
+                              width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                              background: rankBg || 'rgba(255,255,255,0.06)',
+                              border: rankBg ? 'none' : `1.5px solid ${riskColor}44`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 11, fontWeight: 900, fontFamily: 'var(--ff-mono)',
+                              color: rankTxt,
+                              boxShadow: rankBg ? `0 2px 10px ${riskColor}40` : 'none',
+                            }}>
+                              {i + 1}
+                            </div>
+
+                            {/* Info */}
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>{w.full || w.name}</div>
-                              <div style={{ width: '100%', height: 6, background: 'var(--glass-bg2)', borderRadius: 3, overflow: 'hidden' }}>
-                                <div style={{ height: '100%', borderRadius: 3, width: `${riskPct}%`, background: riskColor }} />
+                              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {w.full || w.name}
+                              </div>
+                              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {w.area}
+                              </div>
+                              <div style={{ width: '100%', height: 5, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', borderRadius: 3, width: `${riskPct}%`, background: `linear-gradient(90deg, ${riskColor}cc, ${riskColor})`, transition: 'width 0.5s ease' }} />
                               </div>
                             </div>
-                            <span style={{ fontSize: 16, fontWeight: 800, fontFamily: 'var(--ff-mono)', color: riskColor }}>{w.total}</span>
+
+                            {/* Count badge */}
+                            <div style={{
+                              padding: '3px 9px', borderRadius: 20, flexShrink: 0,
+                              background: `${riskColor}22`,
+                              border: `1px solid ${riskColor}44`,
+                              fontSize: 13, fontWeight: 800, fontFamily: 'var(--ff-mono)',
+                              color: riskColor,
+                            }}>
+                              {w.total}
+                            </div>
                           </button>
                         );
                       })}
@@ -1023,6 +1077,117 @@ export default function MapPage({ complaints, onWardClick }) {
           )}
         </div>
       </div>
+
+      {/* ══════════════════════════════════════════════
+          COMPLAINT PHOTO BOTTOM SHEET
+          Opens when a GPS pin is tapped on the map
+      ══════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {complaintSheetId && (
+          <>
+            <div
+              onClick={() => { setComplaintSheetId(null); setComplaintSheetData(null); }}
+              style={{ position:'fixed', inset:0, zIndex:9997, background:'rgba(0,0,0,0.55)', backdropFilter:'blur(3px)', WebkitBackdropFilter:'blur(3px)' }}
+            />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type:'spring', stiffness:380, damping:36 }}
+              style={{
+                position:'fixed', left:0, right:0, bottom:0, zIndex:9998,
+                background:'var(--bg-card2)',
+                borderRadius:'24px 24px 0 0',
+                boxShadow:'0 -8px 48px rgba(0,0,0,0.55)',
+                backdropFilter:'blur(24px)', WebkitBackdropFilter:'blur(24px)',
+                maxHeight:'88vh', display:'flex', flexDirection:'column',
+                paddingBottom:'calc(72px + env(safe-area-inset-bottom,0px))',
+              }}
+            >
+              {/* Drag handle */}
+              <div style={{ width:'100%', height:24, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, cursor:'pointer' }}
+                onClick={() => { setComplaintSheetId(null); setComplaintSheetData(null); }}>
+                <div style={{ width:40, height:5, borderRadius:3, background:'var(--border2)' }} />
+              </div>
+
+              {/* Photo */}
+              {loadingSheet ? (
+                <div style={{ height:160, display:'flex', alignItems:'center', justifyContent:'center', background:'var(--glass-bg)', flexShrink:0 }}>
+                  <div className="spinner" style={{ width:28, height:28, borderWidth:3 }} />
+                </div>
+              ) : complaintSheetData?.photos?.[0] ? (
+                <img
+                  src={complaintSheetData.photos[0]}
+                  alt="Evidence"
+                  style={{ width:'100%', height:200, objectFit:'cover', flexShrink:0 }}
+                />
+              ) : (
+                <div style={{ height:110, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', background:'var(--glass-bg)', flexShrink:0, gap:6 }}>
+                  <span style={{ fontSize:36 }}>📷</span>
+                  <span style={{ fontSize:11, color:'var(--text-muted)' }}>No photo attached</span>
+                </div>
+              )}
+
+              {/* Content */}
+              <div style={{ overflowY:'auto', flex:1, padding:'16px 20px', WebkitOverflowScrolling:'touch' }}>
+                {/* Title row */}
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:12, marginBottom:10 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:17, fontWeight:800, color:'var(--text-primary)', lineHeight:1.25 }}>
+                      {CATEGORIES[complaintSheetData?.category] || 'Health Complaint'}
+                    </div>
+                    <div style={{ fontSize:12, color:'var(--text-muted)', marginTop:4 }}>
+                      📍 {complaintSheetData?.location || 'Mumbai'}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setComplaintSheetId(null); setComplaintSheetData(null); }}
+                    style={{ width:32, height:32, borderRadius:'50%', border:'1px solid var(--border2)', background:'var(--glass-bg)', color:'var(--text-muted)', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', flexShrink:0 }}
+                  >✕</button>
+                </div>
+
+                {/* Pills */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:12 }}>
+                  <span className={`pill ${SEV_PILL[complaintSheetData?.severity] || 'p-mod'}`}>{complaintSheetData?.severity || 'moderate'}</span>
+                  {complaintSheetData?.resolved
+                    ? <span className="pill p-done">✅ Resolved</span>
+                    : <span className="pill p-prog">⏳ {complaintSheetData?.status || 'Open'}</span>
+                  }
+                  {complaintSheetData?.gpsVerified && <span className="pill" style={{ background:'rgba(16,185,129,0.12)', color:'var(--green2)', border:'1px solid rgba(16,185,129,0.25)' }}>✓ GPS Verified</span>}
+                </div>
+
+                {/* Description */}
+                {complaintSheetData?.desc && (
+                  <p style={{ fontSize:13, color:'var(--text-secondary)', lineHeight:1.65, background:'var(--glass-bg)', borderRadius:'var(--r12)', padding:'12px 14px', border:'1px solid var(--border)', marginBottom:12 }}>
+                    {complaintSheetData.desc}
+                  </p>
+                )}
+
+                {/* Meta */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  {[
+                    ['Assigned To', complaintSheetData?.assignedTo || 'Pending'],
+                    ['ID', complaintSheetData?.id],
+                  ].map(([l, v]) => v && (
+                    <div key={l} style={{ background:'var(--glass-bg)', borderRadius:'var(--r8)', padding:'8px 10px', border:'1px solid var(--border)' }}>
+                      <div style={{ fontSize:9, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:.6, marginBottom:3 }}>{l}</div>
+                      <div style={{ fontSize:12, fontWeight:600, color:'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Resolution photo */}
+                {complaintSheetData?.resolutionPhoto && (
+                  <div style={{ marginTop:12 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:.6, marginBottom:6 }}>Resolution Photo</div>
+                    <img src={complaintSheetData.resolutionPhoto} alt="Resolution" style={{ width:'100%', borderRadius:'var(--r12)', maxHeight:160, objectFit:'cover' }} />
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

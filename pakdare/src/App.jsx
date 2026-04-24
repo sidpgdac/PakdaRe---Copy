@@ -53,10 +53,18 @@ function AppContent() {
   
   const { user, role, loading: authLoading } = useAuth();
 
-  // Persist theme
+  // Persist & apply theme — supports 'light' | 'dark' | 'system'
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('pakdare-theme', theme);
+    const apply = (t) => document.documentElement.setAttribute('data-theme', t);
+    if (theme === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      apply(mq.matches ? 'dark' : 'light');
+      const handler = (e) => apply(e.matches ? 'dark' : 'light');
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    }
+    apply(theme);
   }, [theme]);
 
   // Persist announcement
@@ -153,8 +161,6 @@ function AppContent() {
       <Header
         complaints={complaints}
         dbStatus={dataLoading ? 'syncing' : 'conn'}
-        mode={mode}
-        setMode={setMode}
         theme={theme}
         setTheme={setTheme}
         onLogoClick={() => setActivePage('staff-login')}
@@ -166,7 +172,7 @@ function AppContent() {
         breachCount={breachCount}
       />
 
-      <div className="container">
+      <div className={`container${activePage === 'map' ? ' container-map' : ''}`}>
         <AnimatePresence mode="wait">
           {!isNavigating && (
             <motion.div
@@ -193,11 +199,11 @@ function AppContent() {
                         <span className="ann-text">{announcement}</span>
                       </div>
                     )}
-                    <MapPage complaints={complaints} onWardClick={setWardModal} />
+                    <MapPage complaints={complaints} onWardClick={setWardModal} fetchComplaintDetail={fetchComplaintDetail} />
                   </>
                 )}
                 {activePage === 'public-grid' && (
-                  <PublicComplaints complaints={complaints} />
+                  <PublicComplaints complaints={complaints} fetchComplaintDetail={fetchComplaintDetail} />
                 )}
                 {activePage === 'staff-login' && (
                   <StaffLogin setActivePage={setActivePage} showToast={showToast} />
