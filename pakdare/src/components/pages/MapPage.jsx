@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { L } from '../../leafletSetup'; // sets window.L before plugins load
+import L from 'leaflet';
 import 'leaflet.heat';
 import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { WARDS } from '../../data/wardData';
 
-// Mumbai bounds (for initial fit)
+// Mumbai bounds (for initial fit) - tighter focus on Mumbai city center
 const MUMBAI_BOUNDS = [
-  [18.85, 72.75],
-  [19.35, 73.05]
+  [18.92, 72.80],
+  [19.25, 72.98]
 ];
 
 // Wider bounds to allow zooming out slightly while still preventing infinite panning
 const MAX_PAN_BOUNDS = [
-  [18.50, 72.00], // SouthWest expanded
-  [19.80, 74.00]  // NorthEast expanded
+  [18.85, 72.72], // SouthWest expanded slightly
+  [19.35, 73.05]  // NorthEast expanded slightly
 ];
 
 // ── Fallback polygon used only if all network fetches fail ──
@@ -162,7 +164,7 @@ const CATEGORIES = {
 };
 const SEV_PILL = { critical:'p-crit', severe:'p-sev', moderate:'p-mod', minor:'p-min' };
 
-export default function MapPage({ complaints, onWardClick, fetchComplaintDetail }) {
+export default function MapPage({ complaints, onWardClick, fetchComplaintDetail, onOpenReport }) {
   const mapRef = useRef(null);
   const mapInst = useRef(null);
   const layersRef = useRef({
@@ -191,7 +193,7 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail 
   const [loadingSheet,       setLoadingSheet]       = useState(false);
   const layerDDRef = useRef(null);
 
-  // Single O(N) pass over complaints → per-ward stats map; replaces O(N×27×5) per render
+  // Single O(N) pass over complaints → per-ward stats map; replaces O(N×26×5) per render
   const wardStatsMap = useMemo(() => {
     const map = {};
     WARDS.forEach(w => { map[w.id] = { total: 0, unresolved: 0, resolved: 0, clusters: 0, breeding: 0 }; });
@@ -254,10 +256,10 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail 
       zoomControl: true,
       maxBounds: MAX_PAN_BOUNDS,
       maxBoundsViscosity: 0.8,
-      minZoom: 9
+      minZoom: 11
     });
     
-    map.fitBounds(MUMBAI_BOUNDS, { padding: [30, 30] });
+    map.fitBounds(MUMBAI_BOUNDS, { padding: [50, 50], maxZoom: 13 });
 
     const tileLyr = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap © CARTO',
@@ -476,7 +478,8 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail 
           <div class="pu-zone" style="font-size:11px;opacity:0.8;">${w.area} · ${w.zone}</div>
         </div>
         <div class="pu-body" style="padding:12px 16px;">
-          <div class="pu-row"><span class="pu-l">WMO</span><span class="pu-v n">${w.wmo}</span></div>
+          <div class="pu-row"><span class="pu-l">M.O.H.</span><span class="pu-v n">${w.wmo}</span></div>
+          <div class="pu-row"><span class="pu-l">S.I.</span><span class="pu-v n">${w.siTeam?.[0]?.name || 'N/A'}</span></div>
           <div class="pu-row"><span class="pu-l">Total complaints</span><span class="pu-v r">${st.total}</span></div>
           <div class="pu-row"><span class="pu-l">Unresolved</span><span class="pu-v o">${st.unresolved}</span></div>
           <div class="pu-row"><span class="pu-l">Breeding sites</span><span class="pu-v o">${st.breeding}</span></div>
@@ -509,7 +512,14 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail 
       if (!c.lat || !c.lng) return;
       if (c.lat < MUMBAI_BOUNDS[0][0] || c.lat > MUMBAI_BOUNDS[1][0] || c.lng < MUMBAI_BOUNDS[0][1] || c.lng > MUMBAI_BOUNDS[1][1]) return;
       const col = c.severity === 'critical' ? '#E31E24' : c.severity === 'severe' ? '#e07820' : c.severity === 'moderate' ? '#c8b800' : '#1a7a6e';
-      const pin = L.circleMarker([c.lat, c.lng], { radius: 10, fillColor: col, color: '#fff', weight: 2.5, fillOpacity: .92 });
+      // Use divIcon with 44px touch target (WCAG 2.5.5) — visible 14px dot + invisible 44px tap area
+      const pinIcon = L.divIcon({
+        className: '',
+        html: `<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><div style="width:14px;height:14px;border-radius:50%;background:${col};border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div></div>`,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22],
+      });
+      const pin = L.marker([c.lat, c.lng], { icon: pinIcon });
       pin.bindTooltip('📍 ' + (c.location || 'Citizen report'));
       pin.on('click', () => {
         setComplaintSheetId(c.id);
@@ -620,6 +630,7 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail 
 
   return (
     <div className="map-full-wrap">
+
       <div className="map-wrap">
         <div className="map-hdr" style={{ justifyContent: 'flex-end', padding: '6px 16px', minHeight: 0 }}>
 
@@ -1075,6 +1086,14 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail 
           )}
         </div>
       </div>
+
+      {/* ── REPORT FAB — always visible on map ──────────────── */}
+      {onOpenReport && (
+        <button className="map-report-fab" onClick={onOpenReport} aria-label="Report a health issue">
+          <span style={{ fontSize: 22 }}>➕</span>
+          <span className="map-report-fab-label">Report Issue</span>
+        </button>
+      )}
 
       {/* ══════════════════════════════════════════════
           COMPLAINT PHOTO BOTTOM SHEET

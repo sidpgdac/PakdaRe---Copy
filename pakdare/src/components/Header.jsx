@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
+import { WARDS } from '../data/wardData';
 
 const THEMES      = ['dark', 'light', 'system'];
 const THEME_ICON  = { dark: '🌙', light: '☀️', system: '💻' };
@@ -67,7 +68,7 @@ export default function Header({ complaints, dbStatus, theme, setTheme, onLogoCl
           <div className="hs hd"><div className="v">{active}</div><div className="l">Active</div></div>
           <div className="hs hw"><div className="v">{pending}</div><div className="l">Pending</div></div>
           <div className="hs hs2"><div className="v">{resolved}</div><div className="l">Resolved</div></div>
-          <div className="hs hi"><div className="v">27</div><div className="l">Wards</div></div>
+          <div className="hs hi"><div className="v">{WARDS.length}</div><div className="l">Wards</div></div>
         </div>
 
         {/* ── Controls ──────────────────────────────── */}

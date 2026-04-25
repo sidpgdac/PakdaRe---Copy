@@ -31,9 +31,10 @@ export function OfficerCard({ officer, index }) {
 
 export function HierarchyChain({ ward }) {
   const chain = [
-    ...HIER_LEVELS,
-    { role: 'Ward Medical Officer', abbr: ward.wmo.split(' ').map(x => x[0]).join(''), cls: 'hl-wmo', desc: ward.wmo, isWard: true },
-    { role: 'Sanitary Inspector',   abbr: ward.si.split(' ').map(x => x[0]).join(''),  cls: 'hl-si',  desc: ward.si,  isWard: true },
+    { role: 'DEHO',                abbr: 'DH',  cls: 'hl-mc',  desc: 'Dr. Varsha Puri', isWard: true },
+    { role: 'AHO',                 abbr: 'AH',  cls: 'hl-amc', desc: 'Dr. Sachin Bhosle', isWard: true },
+    { role: 'M.O.H.', abbr: ward.wmo?.split(' ').map(x => x[0]).join('') || 'MH', cls: 'hl-wmo', desc: ward.wmo, isWard: true },
+    { role: 'Sanitary Inspector',   abbr: (ward.siTeam?.[0]?.name || 'SI').split(' ').map(x => x[0]).join(''),  cls: 'hl-si',  desc: ward.siTeam?.[0]?.name || 'N/A',  isWard: true },
   ];
   return (
     <div className="ward-hier-wrap">

@@ -1,59 +1,108 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import LoadingScreen from './components/LoadingScreen';
 import TickerBar from './components/TickerBar';
 import Header from './components/Header';
 import NavTabs from './components/NavTabs';
-import Dashboard from './components/pages/Dashboard';
 import MapPage from './components/pages/MapPage';
-import Complaints from './components/pages/Complaints';
-import PublicComplaints from './components/pages/PublicComplaints';
-import Summary from './components/pages/Summary';
 import FileReport from './components/pages/FileReport';
-import HierarchyPage from './components/pages/HierarchyPage';
-import AdminDashboard from './components/pages/AdminDashboard';
+import PublicComplaints from './components/pages/PublicComplaints';
+import StaffLogin from './components/pages/StaffLogin';
+import TrackComplaint from './components/pages/TrackComplaint';
 import WardModal from './components/modals/WardModal';
 import ComplaintModal from './components/modals/ComplaintModal';
-import FileReportModal from './components/modals/FileReportModal';
 import ChatBot from './components/ChatBot';
+import ErrorBoundary from './components/ErrorBoundary';
 import { ToastContainer, useToast } from './components/ui/Toast';
 import { useComplaints } from './hooks/useComplaints';
 import { useSLAEngine } from './hooks/useSLAEngine';
+import { AuthProvider, useAuth } from './context/AuthContext';
+
+// Lazy-load staff/admin pages — citizens never load these chunks
+const Dashboard      = lazy(() => import('./components/pages/Dashboard'));
+const Complaints     = lazy(() => import('./components/pages/Complaints'));
+const Summary        = lazy(() => import('./components/pages/Summary'));
+const HierarchyPage  = lazy(() => import('./components/pages/HierarchyPage'));
+const AdminDashboard = lazy(() => import('./components/pages/AdminDashboard'));
+const MyCasesPage    = lazy(() => import('./components/pages/MyCasesPage'));
+const LeaderboardPage = lazy(() => import('./components/pages/LeaderboardPage'));
 
 const PAGE_VARIANTS = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] } },
-  exit:    { opacity: 0, y: -8, transition: { duration: 0.18 } },
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] } },
+  exit:    { opacity: 0, y: -6, transition: { duration: 0.16 } },
 };
 
-import { AuthProvider, useAuth } from './context/AuthContext';
-import StaffLogin from './components/pages/StaffLogin';
+// Skeleton fallback for lazy pages
+function PageSkeleton() {
+  return (
+    <div className="page">
+      <div className="page-hdr">
+        <div className="skeleton" style={{ width: 260, height: 28, borderRadius: 6, marginBottom: 8 }} />
+        <div className="skeleton" style={{ width: 320, height: 16, borderRadius: 4 }} />
+      </div>
+      <div className="stats-grid">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="sc">
+            <div className="skeleton" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+            <div className="sc-row" style={{ marginTop: 10 }}>
+              <div className="skeleton" style={{ width: 48, height: 24, borderRadius: 4, marginBottom: 6 }} />
+              <div className="skeleton" style={{ width: 90, height: 13, borderRadius: 4 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="tcard" style={{ padding: 20 }}>
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="skeleton" style={{ width: '100%', height: 56, borderRadius: 10, marginBottom: 10 }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Guard: redirect to login with a helpful message instead of silently going to map
+function StaffGuard({ children }) {
+  const { user, loading: authLoading } = useAuth();
+  const location = useLocation();
+  if (authLoading) return <PageSkeleton />;
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location, reason: 'auth' }} replace />;
+  }
+  return children;
+}
 
 export default function App() {
   return (
     <AuthProvider>
-      <AppContent />
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
     </AuthProvider>
   );
 }
 
 function AppContent() {
-  const [loading,       setLoading]       = useState(true);
-  const [mode,          setMode]          = useState('real');
-  const [activePage,    setActivePage]    = useState('map');
-  const [wardModal,     setWardModal]     = useState(null);
-  const [complaintModal,setComplaintModal]= useState(null);
-  const [reportModal,   setReportModal]   = useState(false);
-  const [theme,         setTheme]         = useState(() => localStorage.getItem('pakdare-theme') || 'dark');
-  const [isNavigating,  setIsNavigating]  = useState(false);
-  const [announcement,  setAnnouncement]  = useState(() => localStorage.getItem('pakdare-ann') || '');
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const [loading, setLoading]   = useState(true);
+  const [mode,    setMode]      = useState('real');
+  const [wardModal,      setWardModal]      = useState(null);
+  const [complaintModal, setComplaintModal] = useState(null);
+  const [theme,          setTheme]          = useState(() => localStorage.getItem('pakdare-theme') || 'dark');
+  const [announcement,   setAnnouncement]   = useState(() => localStorage.getItem('pakdare-ann') || '');
 
   const { toasts, showToast } = useToast();
-  const { complaints, loading: dataLoading, fetchError, addComplaint, resolveComplaint, resolveWithPhoto, updateComplaint, seedDemo, clearDemo, fetchComplaintDetail, refetch } = useComplaints(mode);
-  
-  const { user, role, loading: authLoading } = useAuth();
+  const {
+    complaints, loading: dataLoading, fetchError, isDemoMode,
+    addComplaint, resolveComplaint, resolveWithPhoto,
+    updateComplaint, seedDemo, clearDemo, fetchComplaintDetail, refetch,
+  } = useComplaints(mode);
 
-  // Persist & apply theme — supports 'light' | 'dark' | 'system'
+  const { user, loading: authLoading } = useAuth();
+
+  // Persist & apply theme
   useEffect(() => {
     localStorage.setItem('pakdare-theme', theme);
     const apply = (t) => document.documentElement.setAttribute('data-theme', t);
@@ -67,131 +116,81 @@ function AppContent() {
     apply(theme);
   }, [theme]);
 
-  // Persist announcement
-  useEffect(() => {
-    localStorage.setItem('pakdare-ann', announcement);
-  }, [announcement]);
+  useEffect(() => { localStorage.setItem('pakdare-ann', announcement); }, [announcement]);
 
-  // Route protection
-  useEffect(() => {
-    if (!authLoading && !user) {
-      const protectedPages = ['dashboard', 'complaints', 'summary', 'officers', 'admin'];
-      if (protectedPages.includes(activePage)) {
-        setActivePage('map');
-      }
-    } else if (!authLoading && user && activePage === 'staff-login') {
-      setActivePage('dashboard');
-    }
-  }, [user, authLoading, activePage]);
-
-  // Stable callback so useSLAEngine's effect doesn't reset on every render
   const onBreach = useCallback((c) => {
-    if (user) {
-      showToast(`🚨 SLA Breached: ${c.id} — ${c.ward} Ward (${c.severity})`, 'error');
-    }
+    if (user) showToast(`🚨 SLA Breached: ${c.id} — ${c.ward} Ward (${c.severity})`, 'error');
   }, [user, showToast]);
 
-  // SLA Engine
-  const { getSLAInfo, getBreachedComplaints } = useSLAEngine({
-    complaints,
-    onBreach,
-    updateComplaint,
-  });
-
-  const breachCount = useMemo(() => getBreachedComplaints().length, [getBreachedComplaints]);
+  const { getSLAInfo, getBreachedComplaints } = useSLAEngine({ complaints, onBreach, updateComplaint });
+  const breachCount    = useMemo(() => getBreachedComplaints().length, [getBreachedComplaints]);
   const unresolvedCount = useMemo(() => complaints.filter(c => !c.resolved).length, [complaints]);
 
-  const alertBranch = useCallback(() => showToast('🚨 Alert sent to Insecticide Branch!', 'warn'), [showToast]);
-
-  // Lazy-load full complaint detail (with photos) when opening modal
   const handleComplaintDetail = useCallback(async (c) => {
-    setComplaintModal(c); // show immediately with list data
+    setComplaintModal(c);
     const full = await fetchComplaintDetail(c.id);
-    if (full) setComplaintModal(full); // update with photos once loaded
+    if (full) setComplaintModal(full);
   }, [fetchComplaintDetail]);
 
-  // Tab navigation with loader
-  const handleNav = (page) => {
-    if (page === activePage) return;
-    setIsNavigating(true);
-    setTimeout(() => {
-      setActivePage(page);
-      setIsNavigating(false);
-    }, 350);
-  };
+  if (loading) return <LoadingScreen onEnter={() => setLoading(false)} />;
 
-  // Gate ONLY on the animation flag. authLoading resolves within its own 5-second
-  // bail timeout. dataLoading shows a sync bar in the Header — never remounts
-  // the LoadingScreen (which caused the infinite-loop bug).
-  if (loading) {
-    return <LoadingScreen onEnter={() => setLoading(false)} />;
-  }
+  // Derive active page from URL for NavTabs highlight
+  const activePage = location.pathname.replace('/', '') || 'map';
 
   return (
     <>
       <TickerBar />
-      {/* Thin progress bar: page navigation OR live data syncing */}
-      {(isNavigating || dataLoading) && <div className="tab-loader-bar" />}
-      {/* Database error banner — shows actual Supabase error so it's actionable */}
-      {fetchError && !dataLoading && (
-        <div style={{
-          background: 'rgba(239,68,68,0.12)', borderBottom: '1px solid rgba(239,68,68,0.3)',
-          padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10,
-          fontSize: 12, color: 'var(--red2)', flexWrap: 'wrap',
-        }}>
-          <span style={{ fontWeight: 700 }}>⚠️ Database error:</span>
-          <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--ff-mono)', fontSize: 11, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {fetchError}
-          </span>
-          <button
-            onClick={refetch}
-            style={{
-              padding: '4px 12px', borderRadius: 'var(--r-full)', fontSize: 11, fontWeight: 700,
-              background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)',
-              color: 'var(--red2)', cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            Retry
-          </button>
-          <span style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0 }}>
-            Showing demo data
-          </span>
+
+      {/* DEMO MODE banner — prominent, can't be missed */}
+      {isDemoMode && (
+        <div className="demo-mode-banner">
+          <span className="demo-mode-icon">🧪</span>
+          <span className="demo-mode-text">DEMO MODE — Showing sample data. Real database unavailable.</span>
+          <button className="demo-mode-retry" onClick={refetch}>Retry Connection</button>
         </div>
       )}
+
+      {/* DB error banner (non-demo errors) */}
+      {fetchError && !isDemoMode && !dataLoading && (
+        <div className="db-error-bar">
+          <span style={{ fontWeight: 700 }}>⚠️ Database error:</span>
+          <span className="db-error-msg">{fetchError}</span>
+          <button className="db-error-retry" onClick={refetch}>Retry</button>
+        </div>
+      )}
+
+      {dataLoading && <div className="tab-loader-bar" />}
+
       <Header
         complaints={complaints}
         dbStatus={dataLoading ? 'syncing' : 'conn'}
         theme={theme}
         setTheme={setTheme}
-        onLogoClick={() => setActivePage('staff-login')}
+        onLogoClick={() => navigate(user ? '/dashboard' : '/map')}
       />
+
       <NavTabs
         active={activePage}
-        setActive={handleNav}
+        navigate={navigate}
         complaintCount={unresolvedCount}
         breachCount={breachCount}
       />
 
       <div className={`container${activePage === 'map' ? ' container-map' : ''}`}>
         <AnimatePresence mode="wait">
-          {!isNavigating && (
-            <motion.div
-              key={activePage}
-              variants={PAGE_VARIANTS}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-            >
-                {activePage === 'dashboard' && (
-                  <Dashboard
-                    complaints={complaints}
-                    setActivePage={handleNav}
-                    onWardClick={setWardModal}
-                    seedDemo={seedDemo}
-                    clearDemo={clearDemo}
-                  />
-                )}
-                {activePage === 'map' && (
+          <motion.div
+            key={location.pathname}
+            variants={PAGE_VARIANTS}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+          >
+            <Routes location={location}>
+              {/* ── PUBLIC ROUTES ── */}
+              <Route path="/" element={<Navigate to="/map" replace />} />
+
+              <Route path="/map" element={
+                <ErrorBoundary>
                   <>
                     {announcement && (
                       <div className="ann-banner">
@@ -199,45 +198,144 @@ function AppContent() {
                         <span className="ann-text">{announcement}</span>
                       </div>
                     )}
-                    <MapPage complaints={complaints} onWardClick={setWardModal} fetchComplaintDetail={fetchComplaintDetail} />
+                    <MapPage
+                      complaints={complaints}
+                      onWardClick={setWardModal}
+                      fetchComplaintDetail={fetchComplaintDetail}
+                      onOpenReport={() => navigate('/report')}
+                    />
                   </>
-                )}
-                {activePage === 'public-grid' && (
+                </ErrorBoundary>
+              } />
+
+              <Route path="/report" element={
+                <ErrorBoundary>
+                  <FileReport
+                    onSubmit={(c) => {
+                      addComplaint(c);
+                      showToast(`✅ Report ${c.id} submitted & routed!`, 'success');
+                      navigate(`/track/${c.id}`, { state: { justFiled: true } });
+                    }}
+                    showToast={showToast}
+                    complaints={complaints}
+                  />
+                </ErrorBoundary>
+              } />
+
+              <Route path="/gallery" element={
+                <ErrorBoundary>
                   <PublicComplaints complaints={complaints} fetchComplaintDetail={fetchComplaintDetail} />
-                )}
-                {activePage === 'staff-login' && (
-                  <StaffLogin setActivePage={setActivePage} showToast={showToast} />
-                )}
-              {activePage === 'complaints' && (
-                <Complaints
-                  complaints={complaints}
-                  onDetail={handleComplaintDetail}
-                  onAlertBranch={alertBranch}
-                  getSLAInfo={getSLAInfo}
-                />
-              )}
-              {activePage === 'summary' && (
-                <Summary complaints={complaints} onWardClick={setWardModal} />
-              )}
-              {activePage === 'officers' && <HierarchyPage />}
-              {activePage === 'admin' && (
-                <AdminDashboard
-                  complaints={complaints}
-                  announcement={announcement}
-                  setAnnouncement={setAnnouncement}
-                />
-              )}
-              {activePage === 'report' && (
-                <FileReport
-                  onSubmit={(c) => {
-                    addComplaint(c);
-                    showToast(`✅ Report ${c.id} submitted & routed!`, 'success');
-                  }}
+                </ErrorBoundary>
+              } />
+
+              <Route path="/track/:id" element={
+                <ErrorBoundary>
+                  <TrackComplaint complaints={complaints} fetchComplaintDetail={fetchComplaintDetail} />
+                </ErrorBoundary>
+              } />
+
+              <Route path="/leaderboard" element={
+                <ErrorBoundary>
+                  <Suspense fallback={<PageSkeleton />}>
+                    <LeaderboardPage complaints={complaints} />
+                  </Suspense>
+                </ErrorBoundary>
+              } />
+
+              <Route path="/login" element={
+                <StaffLogin
                   showToast={showToast}
+                  onSuccess={() => {
+                    const role = localStorage.getItem('pakdare-role');
+                    navigate(role === 'admin' ? '/admin' : '/dashboard');
+                  }}
                 />
-              )}
-            </motion.div>
-          )}
+              } />
+
+              {/* ── STAFF-ONLY ROUTES ── */}
+              <Route path="/dashboard" element={
+                <StaffGuard>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSkeleton />}>
+                      <Dashboard
+                        complaints={complaints}
+                        navigate={navigate}
+                        onWardClick={setWardModal}
+                        seedDemo={seedDemo}
+                        clearDemo={clearDemo}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                </StaffGuard>
+              } />
+
+              <Route path="/complaints" element={
+                <StaffGuard>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSkeleton />}>
+                      <Complaints
+                        complaints={complaints}
+                        onDetail={handleComplaintDetail}
+                        onAlertBranch={() => showToast('🚨 Alert sent to Insecticide Branch!', 'warn')}
+                        getSLAInfo={getSLAInfo}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                </StaffGuard>
+              } />
+
+              <Route path="/summary" element={
+                <StaffGuard>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSkeleton />}>
+                      <Summary complaints={complaints} onWardClick={setWardModal} />
+                    </Suspense>
+                  </ErrorBoundary>
+                </StaffGuard>
+              } />
+
+              <Route path="/my-cases" element={
+                <StaffGuard>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSkeleton />}>
+                      <MyCasesPage
+                        complaints={complaints}
+                        onDetail={handleComplaintDetail}
+                        getSLAInfo={getSLAInfo}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                </StaffGuard>
+              } />
+
+              <Route path="/officers" element={
+                <StaffGuard>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSkeleton />}>
+                      <HierarchyPage />
+                    </Suspense>
+                  </ErrorBoundary>
+                </StaffGuard>
+              } />
+
+              <Route path="/admin" element={
+                <StaffGuard>
+                  <ErrorBoundary>
+                    <Suspense fallback={<PageSkeleton />}>
+                      <AdminDashboard
+                        complaints={complaints}
+                        announcement={announcement}
+                        setAnnouncement={setAnnouncement}
+                      />
+                    </Suspense>
+                  </ErrorBoundary>
+                </StaffGuard>
+              } />
+
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/map" replace />} />
+            </Routes>
+          </motion.div>
         </AnimatePresence>
       </div>
 
@@ -247,11 +345,11 @@ function AppContent() {
           ward={wardModal}
           complaints={complaints}
           onClose={() => setWardModal(null)}
-          onViewComplaints={() => { handleNav('complaints'); setWardModal(null); }}
+          onViewComplaints={() => { navigate('/complaints'); setWardModal(null); }}
         />
       )}
 
-      {/* Complaint Modal — with GPS proof-of-resolution */}
+      {/* Complaint Modal */}
       {complaintModal && (
         <ComplaintModal
           complaint={complaintModal}
@@ -260,7 +358,9 @@ function AppContent() {
             const result = await resolveWithPhoto(id, photo, officer);
             if (result.ok) {
               showToast('✅ Complaint resolved with GPS verification!', 'success');
-              setComplaintModal(prev => prev ? { ...prev, resolved: true, status: 'Resolved', resolutionPhoto: photo, gpsVerified: true } : null);
+              setComplaintModal(prev => prev
+                ? { ...prev, resolved: true, status: 'Resolved', resolutionPhoto: photo, gpsVerified: true }
+                : null);
             } else {
               showToast(`🚫 ${result.error}`, 'error');
             }
@@ -273,19 +373,7 @@ function AppContent() {
         />
       )}
 
-      {/* File Report Modal */}
-      {reportModal && (
-        <FileReportModal
-          onClose={() => setReportModal(false)}
-          onSubmit={(c) => {
-            addComplaint(c);
-            showToast(`✅ Report ${c.id} submitted!`, 'success');
-          }}
-          showToast={showToast}
-        />
-      )}
-
-      <ChatBot onOpenReport={() => setReportModal(true)} />
+      <ChatBot onOpenReport={() => navigate('/report')} />
       <ToastContainer toasts={toasts} />
     </>
   );

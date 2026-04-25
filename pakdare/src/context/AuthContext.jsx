@@ -4,27 +4,25 @@ import { supabase } from '../supabase';
 const AuthContext = createContext({
   user: null,
   role: 'citizen',
+  staffProfile: null,
   loading: true,
   signOut: async () => {},
 });
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
-  const [role, setRole] = useState('citizen');
-  const [loading, setLoading] = useState(true);
+  const [user, setUser]               = useState(null);
+  const [role, setRole]               = useState('citizen');
+  const [staffProfile, setStaffProfile] = useState(null);
+  const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
     if (!supabase) {
-      // No Supabase client — proceed immediately as unauthenticated
       setLoading(false);
       return;
     }
 
-    // Safety net: if auth check takes > 5 s, unblock the app
     const bail = setTimeout(() => {
-      setUser(null);
-      setRole('citizen');
-      setLoading(false);
+      setUser(null); setRole('citizen'); setStaffProfile(null); setLoading(false);
     }, 5000);
 
     supabase.auth
@@ -33,44 +31,62 @@ export const AuthProvider = ({ children }) => {
         clearTimeout(bail);
         if (session?.user) {
           setUser(session.user);
-          fetchRole(session.user.id);
+          fetchRole(session.user);
         } else {
-          setUser(null);
-          setRole('citizen');
-          setLoading(false);
+          setUser(null); setRole('citizen'); setStaffProfile(null); setLoading(false);
         }
       })
       .catch(() => {
         clearTimeout(bail);
-        setUser(null);
-        setRole('citizen');
-        setLoading(false);
+        setUser(null); setRole('citizen'); setStaffProfile(null); setLoading(false);
       });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         setUser(session.user);
-        fetchRole(session.user.id);
+        fetchRole(session.user);
       } else {
-        setUser(null);
-        setRole('citizen');
-        setLoading(false);
+        setUser(null); setRole('citizen'); setStaffProfile(null); setLoading(false);
       }
     });
 
-    return () => {
-      clearTimeout(bail);
-      subscription.unsubscribe();
-    };
+    return () => { clearTimeout(bail); subscription.unsubscribe(); };
   }, []);
 
-  const fetchRole = async (userId) => {
+  const fetchRole = async (authUser) => {
     try {
-      // Any authenticated user is staff for now
+      if (!supabase) { setRole('staff'); setLoading(false); return; }
+
+      // Try fetching from staff_profiles table (may not exist in all deployments)
+      const { data, error } = await supabase
+        .from('staff_profiles')
+        .select('role, name, ward_id, designation')
+        .eq('user_id', authUser.id)
+        .single();
+
+      if (!error && data?.role) {
+        // roles: 'admin' | 'staff' | 'officer'
+        setRole(data.role);
+        setStaffProfile(data);
+      } else {
+        // Fallback: check user_metadata (set when creating user via Supabase Dashboard)
+        const metaRole = authUser.user_metadata?.role;
+        if (metaRole === 'officer') {
+          setRole('officer');
+          setStaffProfile({
+            name:        authUser.user_metadata?.name || authUser.email?.split('@')[0],
+            designation: authUser.user_metadata?.designation || 'Field Officer',
+            ward_id:     authUser.user_metadata?.ward_id || null,
+            role:        'officer',
+          });
+        } else {
+          // Default: full staff access for any authenticated user
+          setRole('staff');
+          setStaffProfile(null);
+        }
+      }
+    } catch {
       setRole('staff');
-    } catch (error) {
-      console.error('Error fetching role:', error);
-      setRole('citizen');
     } finally {
       setLoading(false);
     }
@@ -81,7 +97,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, signOut }}>
+    <AuthContext.Provider value={{ user, role, staffProfile, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

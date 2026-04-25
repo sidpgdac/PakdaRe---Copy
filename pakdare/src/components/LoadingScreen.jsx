@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
+import { WARDS } from '../data/wardData';
 
 const MESSAGES = [
   'Connecting to BMC Health Network…',
-  'Loading 27 Ward Data Points…',
+  `Loading ${WARDS.length} Ward Data Points…`,
   'Calibrating Disease Surveillance…',
   'Syncing Complaint Database…',
   'Activating GPS Tracking…',

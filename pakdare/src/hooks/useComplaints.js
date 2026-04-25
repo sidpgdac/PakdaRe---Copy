@@ -24,11 +24,16 @@ async function runQuery(queryFn, timeoutMs = 15000) {
   }
 }
 
+const PAGE_SIZE = 50;
+
 export function useComplaints(mode) {
   const { user } = useAuth();
   const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(null); // null | string
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -36,47 +41,63 @@ export function useComplaints(mode) {
     return () => { isMountedRef.current = false; };
   }, []);
 
-  const fetchComplaints = useCallback(async () => {
+  const fetchComplaints = useCallback(async (pageNum = 0, append = false) => {
     if (!isMountedRef.current) return;
     setLoading(true);
     setFetchError(null);
 
     if (mode === 'real' && supabase) {
-      // Exclude photo blob columns from list query — they're large base64 strings
-      // that cause statement timeouts. Photos are fetched on-demand via fetchComplaintDetail.
-      const LIST_COLS = 'id,ward,location,lat,lng,category,severity,desc,status,assignedTo,time,resolved,isDemo,escalations,hierarchy,resolvedAt,resolutionOfficer,resolutionGps,gpsVerified';
+      const LIST_COLS = 'id,ward,location,lat,lng,category,severity,desc,status,assignedTo,time,resolved,isDemo,escalations,hierarchy,photos,resolvedAt,resolutionOfficer,resolutionGps,gpsVerified';
+      const from = pageNum * PAGE_SIZE;
+      const to   = from + PAGE_SIZE - 1;
       const { data, error } = await runQuery(() =>
         supabase
           .from('complaints')
           .select(LIST_COLS)
-          .limit(500)
+          .order('time', { ascending: false })
+          .range(from, to)
       );
 
       if (!isMountedRef.current) return;
 
       if (!error && data) {
-        // sort newest-first client-side so the DB query stays index-free
-        const sorted = [...data].sort((a, b) => new Date(b.time) - new Date(a.time));
-        setComplaints(sorted);
+        setIsDemoMode(false);
+        setHasMore(data.length === PAGE_SIZE);
+        setPage(pageNum);
+        if (append) {
+          setComplaints(prev => {
+            const ids = new Set(prev.map(c => c.id));
+            return [...prev, ...data.filter(c => !ids.has(c.id))];
+          });
+        } else {
+          setComplaints(data);
+        }
       } else {
-        // Surface the real Supabase error message so the user knows what to fix
         const msg = error?.message ?? 'Unknown error — check browser console for details.';
         console.error('[PakdaRe] Supabase fetch failed:', msg, error);
         setFetchError(msg);
-        // Fall back to demo data so the app still works
+        setIsDemoMode(true);
         setComplaints(DEMO_COMPLAINTS);
       }
     } else {
-      // Demo mode — use local data immediately
-      if (isMountedRef.current) setComplaints(DEMO_COMPLAINTS);
+      if (isMountedRef.current) {
+        setIsDemoMode(true);
+        setComplaints(DEMO_COMPLAINTS);
+        setHasMore(false);
+      }
     }
 
     if (isMountedRef.current) setLoading(false);
   }, [mode]);
 
+  const loadMore = useCallback(() => {
+    if (!hasMore || loading) return;
+    fetchComplaints(page + 1, true);
+  }, [hasMore, loading, page, fetchComplaints]);
+
   // Fetch on mount and when auth / mode changes
   useEffect(() => {
-    fetchComplaints();
+    fetchComplaints(0, false);
   }, [fetchComplaints, user?.id]);
 
   // Real-time subscription
@@ -113,7 +134,10 @@ export function useComplaints(mode) {
     setComplaints(prev => [c, ...prev]);
     if (mode === 'real' && supabase) {
       const { error } = await supabase.from('complaints').insert(c);
-      if (error) console.error('[PakdaRe] addComplaint:', error.message);
+      if (error) {
+        console.error('[PakdaRe] addComplaint error:', error);
+        alert(`Database Error: ${error.message}`);
+      }
     }
   }, [mode]);
 
@@ -196,9 +220,10 @@ export function useComplaints(mode) {
   }, [mode, complaints]);
 
   return {
-    complaints, loading, fetchError,
+    complaints, loading, fetchError, isDemoMode,
+    hasMore, loadMore,
     addComplaint, resolveComplaint, resolveWithPhoto,
     updateComplaint, seedDemo, clearDemo,
-    fetchComplaintDetail, refetch: fetchComplaints,
+    fetchComplaintDetail, refetch: () => fetchComplaints(0, false),
   };
 }

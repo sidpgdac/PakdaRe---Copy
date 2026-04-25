@@ -1,10 +1,12 @@
+import { WARDS } from '../data/wardData';
+
 const TICKER =
   '🦟 K/East — 38 active fever clusters · DMC escalation triggered  ·  ' +
   '💧 Dharavi F/S — Water contamination · Lab alerted  ·  ' +
   '🚨 Kurla L-Ward — 22 breeding sites · fogging deployed  ·  ' +
   '⚠️ M/East Govandi — 16 cases flagged  ·  ' +
   '✅ G/South — 6 complaints resolved <24h  ·  ' +
-  '📍 All 27 BMC wards monitored · Public Health Dept     ';
+  `📍 All ${WARDS.length} BMC wards monitored · Public Health Dept     `;
 
 export default function TickerBar() {
   return (

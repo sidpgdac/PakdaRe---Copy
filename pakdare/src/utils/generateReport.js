@@ -1,5 +1,3 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { CATEGORIES, WARDS } from '../data/wardData';
 import { timeAgo } from './dateHelper';
 
@@ -32,6 +30,11 @@ function getMimeType(dataUrl) {
  * - "Verified by GPS" watermark on resolved complaints
  */
 export async function generateReport(complaint) {
+  // Dynamic import — jsPDF (~500KB) only loads when export is actually triggered
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const PW = pdf.internal.pageSize.getWidth();
   const PH = pdf.internal.pageSize.getHeight();

@@ -64,7 +64,7 @@ function DashboardSkeleton() {
   );
 }
 
-export default function Dashboard({ complaints, setActivePage, onWardClick, seedDemo, clearDemo }) {
+export default function Dashboard({ complaints, navigate, onWardClick, seedDemo, clearDemo }) {
   // Single O(N) pass → lookup map; replaces 54× O(N) filter calls per render
   const wardComplaintsMap = useMemo(() => {
     const map = {};
@@ -88,13 +88,13 @@ export default function Dashboard({ complaints, setActivePage, onWardClick, seed
         <div className="page-hdr-row">
           <div>
             <h1 className="page-title">Public Health Command Center</h1>
-            <p className="page-sub">Real-time disease surveillance · All 27 BMC Wards · Mumbai</p>
+            <p className="page-sub">Real-time disease surveillance · All {WARDS.length} BMC Wards · Mumbai</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="bp" onClick={() => setActivePage('report')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button className="bp" onClick={() => navigate('/report')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               ➕ File Report
             </button>
-            <button className="bo" onClick={() => setActivePage('map')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <button className="bo" onClick={() => navigate('/map')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               🗺️ Live Map
             </button>
           </div>
@@ -123,10 +123,12 @@ export default function Dashboard({ complaints, setActivePage, onWardClick, seed
       <div className="tcard">
         <div className="thdr">
           <div>
-            <div className="tttl">🏆 Ward Risk Leaderboard</div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>Click any row to open ward profile</div>
+            <div className="tttl">⚠️ Ward Risk Rankings</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+              Ranked by risk score (highest risk = Rank 1) · Click row for ward profile
+            </div>
           </div>
-          <button className="bp" onClick={() => setActivePage('summary')}>Full Report →</button>
+          <button className="bp" onClick={() => navigate('/summary')}>Full Report →</button>
         </div>
 
         {/* ── DESKTOP: full 9-column table ── */}
@@ -134,7 +136,7 @@ export default function Dashboard({ complaints, setActivePage, onWardClick, seed
           <table className="dtbl">
             <thead>
               <tr>
-                <th>Rank</th><th>Ward</th><th>Zone</th><th>WMO</th>
+                <th>Rank</th><th>Ward</th><th>Zone</th><th>M.O.H.</th>
                 <th>Clusters</th><th>Complaints</th><th>Unresolved</th><th>Risk</th><th>Status</th>
               </tr>
             </thead>

@@ -3,73 +3,87 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 
-// mobilePriority: 1–4 appear in the bottom bar; 5+ go into the "More" drawer
-const TABS = [
-  { id: 'dashboard',    icon: '📊', labelKey: 'nav_dashboard', short: 'Home',    mobilePriority: 4 },
-  { id: 'map',          icon: '🗺️',  labelKey: 'nav_map',       short: 'Map',     mobilePriority: 1 },
-  { id: 'public-grid',  icon: '🖼️',  labelKey: 'Gallery',       short: 'Gallery', mobilePriority: 7 },
-  { id: 'complaints',   icon: '📋', labelKey: 'nav_complaints', short: 'Cases',   mobilePriority: 2, badge: true },
-  { id: 'summary',      icon: '📈', labelKey: 'nav_summary',   short: 'Stats',   mobilePriority: 5 },
-  { id: 'officers',     icon: '👮', labelKey: 'nav_officers',  short: 'Team',    mobilePriority: 6 },
-  { id: 'report',       icon: '➕', labelKey: 'nav_report',    short: 'Report',  mobilePriority: 3 },
-  { id: 'admin',        icon: '🔐', labelKey: 'nav_admin',     short: 'Admin',   mobilePriority: 5 },
+// ── CITIZEN tabs (unauthenticated) ──────────────────────────────────
+const CITIZEN_TABS = [
+  { id: 'map',         path: '/map',         icon: '🗺️',  label: 'Map',         short: 'Map',         mobilePriority: 1 },
+  { id: 'report',      path: '/report',      icon: '➕',   label: 'Report',      short: 'Report',      mobilePriority: 2 },
+  { id: 'track',       path: '/track/',      icon: '🔍',   label: 'Track',       short: 'Track',       mobilePriority: 3 },
+  { id: 'leaderboard', path: '/leaderboard', icon: '🏆',   label: 'Rankings',    short: 'Ranks',       mobilePriority: 4 },
+  { id: 'gallery',     path: '/gallery',     icon: '🖼️',  label: 'Gallery',     short: 'Gallery',     mobilePriority: 5 },
+  { id: 'login',       path: '/login',       icon: '🔐',   label: 'Staff Login', short: 'Login',       mobilePriority: 6 },
 ];
 
-const MOBILE_PRIMARY_COUNT = 4;
+// ── OFFICER tabs (field officer role — limited access) ───────────────
+const OFFICER_TABS = [
+  { id: 'map',         path: '/map',         icon: '🗺️',  label: 'Live Map',     short: 'Map',     mobilePriority: 1 },
+  { id: 'my-cases',    path: '/my-cases',    icon: '📋',  label: 'My Cases',     short: 'Cases',   mobilePriority: 2, badge: true },
+  { id: 'report',      path: '/report',      icon: '➕',  label: 'File Report',  short: 'Report',  mobilePriority: 3 },
+  { id: 'leaderboard', path: '/leaderboard', icon: '🏆',  label: 'Rankings',     short: 'Ranks',   mobilePriority: 4 },
+];
 
-export default function NavTabs({ active, setActive, complaintCount, breachCount }) {
+// ── STAFF / ADMIN tabs (full access) ────────────────────────────────
+const STAFF_TABS = [
+  { id: 'map',         path: '/map',         icon: '🗺️',  label: 'Live Map',      short: 'Map',     mobilePriority: 1 },
+  { id: 'complaints',  path: '/complaints',  icon: '📋',  label: 'All Cases',     short: 'Cases',   mobilePriority: 2, badge: true },
+  { id: 'my-cases',    path: '/my-cases',    icon: '🎯',  label: 'My Cases',      short: 'Mine',    mobilePriority: 3 },
+  { id: 'report',      path: '/report',      icon: '➕',  label: 'File Report',   short: 'Report',  mobilePriority: 4 },
+  { id: 'dashboard',   path: '/dashboard',   icon: '📊',  label: 'Command Center', short: 'Command', mobilePriority: 5 },
+  { id: 'leaderboard', path: '/leaderboard', icon: '🏆',  label: 'Rankings',      short: 'Ranks',   mobilePriority: 6 },
+  { id: 'summary',     path: '/summary',     icon: '📈',  label: 'Ward Stats',    short: 'Stats',   mobilePriority: 7 },
+  { id: 'officers',    path: '/officers',    icon: '👮',  label: 'Officers',      short: 'Team',    mobilePriority: 8 },
+  { id: 'admin',       path: '/admin',       icon: '⚙️',  label: 'Admin',         short: 'Admin',   mobilePriority: 9 },
+];
+
+const MOBILE_PRIMARY = 4;
+
+export default function NavTabs({ active, navigate, complaintCount, breachCount }) {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const [showMore, setShowMore] = useState(false);
 
-  // Filter by auth
-  const filteredTabs = user
-    ? TABS
-    : TABS.filter(tab => ['map', 'public-grid', 'report'].includes(tab.id));
+  const tabs = !user
+    ? CITIZEN_TABS
+    : role === 'officer'
+      ? OFFICER_TABS
+      : STAFF_TABS;
 
-  // Sort by mobile priority for bottom bar layout
-  const sortedByPriority = [...filteredTabs].sort((a, b) => a.mobilePriority - b.mobilePriority);
-  const primaryTabs = sortedByPriority.slice(0, MOBILE_PRIMARY_COUNT);
-  const moreTabs    = sortedByPriority.slice(MOBILE_PRIMARY_COUNT);
-  const hasMore     = moreTabs.length > 0;
+  const audienceLabel = !user ? '👤 Public' : role === 'officer' ? '👷 Officer' : '🔒 Staff';
 
-  // Active page lives in More drawer?
-  const activeInMore = moreTabs.some(t => t.id === active);
+  const activeId = active?.replace('/', '') || 'map';
 
-  const handleTabClick = (id) => {
-    setActive(id);
-    setShowMore(false);
+  const sorted  = [...tabs].sort((a, b) => a.mobilePriority - b.mobilePriority);
+  const primary = sorted.slice(0, MOBILE_PRIMARY);
+  const more    = sorted.slice(MOBILE_PRIMARY);
+  const hasMore = more.length > 0;
+  const activeInMore = more.some(t => t.id === activeId || activeId.startsWith(t.id));
+
+  const go = (path) => { navigate(path); setShowMore(false); };
+
+  const isActive = (tab) => {
+    if (tab.id === 'track')    return activeId.startsWith('track');
+    if (tab.id === 'my-cases') return activeId === 'my-cases';
+    return activeId === tab.id;
   };
 
   return (
     <>
-      {/* ═══════════════════════════════════════════════════
-          DESKTOP — horizontal top nav (unchanged)
-          Shown via .nav-desktop { display:block } on ≥769px
-          Hidden via .nav-desktop { display:none } on ≤768px
-      ════════════════════════════════════════════════════ */}
+      {/* ── DESKTOP top nav ─────────────────────────────────────────── */}
       <nav className="nav-wrap nav-desktop" role="navigation" aria-label="Main navigation">
+        <div className="nav-audience-label">{audienceLabel}</div>
         <div className="nav-tabs">
-          {filteredTabs.map(tab => (
+          {tabs.map(tab => (
             <button
               key={tab.id}
-              id={`nav-${tab.id}`}
-              className={`ntab${active === tab.id ? ' active' : ''}`}
-              onClick={() => setActive(tab.id)}
-              aria-current={active === tab.id ? 'page' : undefined}
-              style={{ position: 'relative' }}
+              className={`ntab${isActive(tab) ? ' active' : ''}`}
+              onClick={() => go(tab.path)}
+              aria-current={isActive(tab) ? 'page' : undefined}
             >
               <span className="ntab-i" aria-hidden="true">{tab.icon}</span>
-              <span className="ntab-l">{t(tab.labelKey)}</span>
+              <span className="ntab-l">{tab.label}</span>
 
-              {/* Complaint count badge */}
               {tab.badge && complaintCount > 0 && (
-                <span className="ntab-badge">
-                  {complaintCount > 99 ? '99+' : complaintCount}
-                </span>
+                <span className="ntab-badge">{complaintCount > 99 ? '99+' : complaintCount}</span>
               )}
-
-              {/* SLA breach dot */}
               {tab.id === 'complaints' && breachCount > 0 && (
                 <motion.span
                   animate={{ scale: [1, 1.2, 1] }}
@@ -81,9 +95,7 @@ export default function NavTabs({ active, setActive, complaintCount, breachCount
                   }}
                 />
               )}
-
-              {/* Active indicator pill */}
-              {active === tab.id && (
+              {isActive(tab) && (
                 <motion.div
                   layoutId="active-tab-desktop"
                   style={{
@@ -99,22 +111,14 @@ export default function NavTabs({ active, setActive, complaintCount, breachCount
         </div>
       </nav>
 
-      {/* ═══════════════════════════════════════════════════
-          MOBILE — fixed bottom nav
-          Hidden on ≥769px via .nav-mobile { display:none }
-          Shown on ≤768px via media query
-      ════════════════════════════════════════════════════ */}
+      {/* ── MOBILE bottom nav ────────────────────────────────────────── */}
       <nav className="nav-mobile" role="navigation" aria-label="Main navigation">
-
-        {/* More drawer backdrop + panel */}
         <AnimatePresence>
           {showMore && hasMore && (
             <>
               <motion.div
                 className="mob-more-overlay"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.18 }}
                 onClick={() => setShowMore(false)}
               />
@@ -126,14 +130,14 @@ export default function NavTabs({ active, setActive, complaintCount, breachCount
                 transition={{ type: 'spring', stiffness: 420, damping: 32 }}
               >
                 <div className="mob-more-grid">
-                  {moreTabs.map(tab => (
+                  {more.map(tab => (
                     <button
                       key={tab.id}
-                      className={`mob-more-item${active === tab.id ? ' active' : ''}`}
-                      onClick={() => handleTabClick(tab.id)}
+                      className={`mob-more-item${isActive(tab) ? ' active' : ''}`}
+                      onClick={() => go(tab.path)}
                     >
                       <span className="mob-more-ico" aria-hidden="true">{tab.icon}</span>
-                      <span className="mob-more-lbl">{t(tab.labelKey)}</span>
+                      <span className="mob-more-lbl">{tab.short}</span>
                     </button>
                   ))}
                 </div>
@@ -142,36 +146,23 @@ export default function NavTabs({ active, setActive, complaintCount, breachCount
           )}
         </AnimatePresence>
 
-        {/* Bottom bar */}
         <div className="mob-nav-bar">
-          {primaryTabs.map(tab => (
+          {primary.map(tab => (
             <button
               key={tab.id}
-              id={`mob-nav-${tab.id}`}
-              className={`mob-tab${active === tab.id ? ' active' : ''}`}
-              onClick={() => handleTabClick(tab.id)}
-              aria-current={active === tab.id ? 'page' : undefined}
+              className={`mob-tab${isActive(tab) ? ' active' : ''}`}
+              onClick={() => go(tab.path)}
+              aria-current={isActive(tab) ? 'page' : undefined}
             >
-              {/* Active background pill */}
-              {active === tab.id && (
-                <motion.div
-                  layoutId="active-mob-tab"
-                  className="mob-tab-active-bg"
-                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                />
+              {isActive(tab) && (
+                <motion.div layoutId="active-mob-tab" className="mob-tab-active-bg"
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }} />
               )}
-
               <span className="mob-tab-ico" aria-hidden="true">{tab.icon}</span>
               <span className="mob-tab-lbl">{tab.short}</span>
-
-              {/* Count badge */}
               {tab.badge && complaintCount > 0 && (
-                <span className="mob-tab-badge">
-                  {complaintCount > 99 ? '99+' : complaintCount}
-                </span>
+                <span className="mob-tab-badge">{complaintCount > 99 ? '99+' : complaintCount}</span>
               )}
-
-              {/* SLA breach dot */}
               {tab.id === 'complaints' && breachCount > 0 && (
                 <motion.span
                   animate={{ scale: [1, 1.15, 1] }}
@@ -182,26 +173,21 @@ export default function NavTabs({ active, setActive, complaintCount, breachCount
             </button>
           ))}
 
-          {/* "More" button — only shown when there are overflow tabs */}
           {hasMore && (
             <button
               className={`mob-tab${showMore || activeInMore ? ' active' : ''}`}
               onClick={() => setShowMore(v => !v)}
-              aria-label="More navigation options"
+              aria-label="More options"
               aria-expanded={showMore}
             >
               {(showMore || activeInMore) && (
-                <motion.div
-                  layoutId="active-mob-tab"
-                  className="mob-tab-active-bg"
-                  transition={{ type: 'spring', stiffness: 420, damping: 32 }}
-                />
+                <motion.div layoutId="active-mob-tab" className="mob-tab-active-bg"
+                  transition={{ type: 'spring', stiffness: 420, damping: 32 }} />
               )}
               <span className="mob-tab-ico" aria-hidden="true" style={{ fontSize: 18, letterSpacing: 1 }}>
                 {showMore ? '✕' : '•••'}
               </span>
               <span className="mob-tab-lbl">{showMore ? 'Close' : 'More'}</span>
-              {/* Blue dot if active page is inside the drawer */}
               {activeInMore && !showMore && <span className="mob-more-active-dot" />}
             </button>
           )}

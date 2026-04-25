@@ -26,10 +26,19 @@ export default function WardModal({ ward, complaints, onClose, onViewComplaints 
   const res   = wc.filter(c => c.resolved).length;
   const rc    = RISK_STAT_COLOR(ward.risk);
 
+  const siOfficers = (ward.siTeam || []).map((s, idx) => ({
+    role: 'Sanitary Inspector',
+    name: s.name,
+    initials: s.name.split(' ').map(x => x[0]).join(''),
+    cls: 'avl2',
+    level: 4,
+    pend: idx === 0 ? Math.max(0, unres) : 0
+  }));
+
   const officers = [
-    { role: 'Ward Medical Officer', name: ward.wmo, initials: ward.wmo.split(' ').map(x => x[0]).join(''), cls: 'avl1', level: 2, pend: unres + 2 },
-    { role: 'Sanitary Inspector',   name: ward.si,  initials: ward.si.split(' ').map(x => x[0]).join(''),  cls: 'avl2', level: 3, pend: Math.max(0, unres - 1) },
-    { role: 'Dist. Malaria Officer', name: 'Dr. K. Sharma', initials: 'KS', cls: 'avl3', level: 4, pend: ward.clusters },
+    { role: 'Medical Officer of Health', name: ward.wmo, initials: ward.wmo?.split(' ').map(x => x[0]).join('') || 'MH', cls: 'avl1', level: 3, pend: unres + 2 },
+    ...siOfficers,
+    { role: 'Dist. Malaria Officer', name: 'Dr. K. Sharma', initials: 'KS', cls: 'avl3', level: 2, pend: ward.clusters },
     { role: 'Insecticide Branch',   name: 'A. Sawant', initials: 'AS', cls: 'avl4', level: 4, pend: Math.floor(ward.breeding / 2) },
   ];
 

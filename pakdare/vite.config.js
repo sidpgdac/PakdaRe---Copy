@@ -26,6 +26,9 @@ const CHUNK_MAP = {
 
 export default defineConfig({
   plugins: [react(), leafletPluginFix],
+  css: {
+    lightningcss: false,
+  },
   build: {
     rollupOptions: {
       output: {
@@ -37,5 +40,7 @@ export default defineConfig({
       },
     },
     chunkSizeWarningLimit: 600,
+    minify: 'terser',
+    cssMinify: false,
   },
 });

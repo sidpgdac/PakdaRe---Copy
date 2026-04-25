@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { supabase } from '../../supabase';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement,
@@ -109,7 +110,8 @@ const TABS = [
   ['breached',   '🚨 Breached'],
   ['resolved',   '✅ Resolved'],
   ['audit',      '📜 Audit Log'],
-  ['staff',      '👥 Staff'],
+  ['staff',      '📊 Performance'],
+  ['manage_staff', '👥 Manage Staff'],
 ];
 
 export default function AdminDashboard({ complaints, announcement, setAnnouncement }) {
@@ -124,6 +126,17 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
   const [annText, setAnnText] = useState(announcement || '');
   const [annSaved, setAnnSaved] = useState(false);
   const [searchId, setSearchId] = useState('');
+  const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', role: 'officer', ward: '', designation: '' });
+  const [provisioning, setProvisioning] = useState(false);
+  const [profiles, setProfiles] = useState([]);
+
+  useEffect(() => {
+    async function loadProfiles() {
+      const { data } = await supabase.from('staff_profiles').select('*');
+      if (data) setProfiles(data);
+    }
+    loadProfiles();
+  }, []);
 
   const filtered = useMemo(() => complaints.filter(c => {
     if (ward && c.ward !== ward) return false;
@@ -390,34 +403,122 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
         </div>
       )}
 
-      {/* ── STAFF PERFORMANCE ── */}
-      {tab === 'staff' && (
-        <div>
-          <div className="adm-staff-grid">
-            {staffData.map((s, i) => {
-              const scoreColor = s.score >= 80 ? '#10b981' : s.score >= 50 ? '#f59e0b' : '#ef4444';
-              return (
-                <motion.div key={s.name} className="adm-staff-card"
-                  initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                  <div className="adm-staff-top">
-                    <div className="adm-staff-av">{s.name.slice(0, 2).toUpperCase()}</div>
-                    <div className="adm-staff-info">
-                      <div className="adm-staff-name">{s.name}</div>
-                      <div className="adm-staff-ward">Ward {s.ward}</div>
-                    </div>
-                    <div className="adm-staff-score" style={{ color: scoreColor }}>{s.score}%</div>
-                  </div>
-                  <div className="adm-staff-bar-wrap">
-                    <div className="adm-staff-bar" style={{ width: `${s.score}%`, background: scoreColor }} />
-                  </div>
-                  <div className="adm-staff-stats">
-                    <span>📋 {s.assigned} assigned</span>
-                    <span style={{ color: '#10b981' }}>✅ {s.resolved} resolved</span>
-                    <span style={{ color: '#ef4444' }}>🚨 {s.breached} breached</span>
-                  </div>
-                </motion.div>
-              );
-            })}
+      {/* ── MANAGE STAFF ── */}
+      {tab === 'manage_staff' && (
+        <div style={{ display: 'flex', gap: 24, flexDirection: 'column' }}>
+          <div className="tcard" style={{ padding: 24 }}>
+            <div className="tttl" style={{ marginBottom: 20 }}>➕ Register New Staff Member</div>
+            <form className="adm-staff-form" onSubmit={async (e) => {
+              e.preventDefault();
+              setProvisioning(true);
+              try {
+                // 1. Create the Auth User with Password
+                const { data: authData, error: authError } = await supabase.auth.signUp({
+                  email: newStaff.email,
+                  password: newStaff.password,
+                  options: {
+                    data: {
+                      role: newStaff.role,
+                      name: newStaff.name,
+                      designation: newStaff.designation,
+                      ward_id: newStaff.ward
+                    }
+                  }
+                });
+                
+                if (authError) throw authError;
+
+                // 2. Create entry in staff_profiles
+                const { error: profError } = await supabase.from('staff_profiles').insert({
+                  user_id: authData.user.id,
+                  name: newStaff.name,
+                  email: newStaff.email,
+                  role: newStaff.role,
+                  ward_id: newStaff.ward,
+                  designation: newStaff.designation
+                });
+                
+                if (profError) throw profError;
+                
+                alert(`✅ Account created for ${newStaff.name}! \nNote: You may need to log back in as Admin now, as Supabase signs in the new user automatically.`);
+                setNewStaff({ name: '', email: '', password: '', role: 'officer', ward: '', designation: '' });
+              } catch (err) {
+                alert(`🚫 Registration failed: ${err.message}`);
+              } finally {
+                setProvisioning(false);
+              }
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+                <div className="fg">
+                  <label className="flbl">Full Name</label>
+                  <input className="fi" required value={newStaff.name} onChange={e => setNewStaff({...newStaff, name: e.target.value})} placeholder="e.g. Rajesh Kumar" />
+                </div>
+                <div className="fg">
+                  <label className="flbl">Official Email</label>
+                  <input className="fi" type="email" required value={newStaff.email} onChange={e => setNewStaff({...newStaff, email: e.target.value})} placeholder="officer@bmc.gov.in" />
+                </div>
+                <div className="fg">
+                  <label className="flbl">Initial Password</label>
+                  <input className="fi" type="text" required value={newStaff.password} onChange={e => setNewStaff({...newStaff, password: e.target.value})} placeholder="Set password here" />
+                </div>
+                <div className="fg">
+                  <label className="flbl">Designation</label>
+                  <input className="fi" required value={newStaff.designation} onChange={e => setNewStaff({...newStaff, designation: e.target.value})} placeholder="e.g. Sanitary Inspector" />
+                </div>
+                <div className="fg">
+                  <label className="flbl">Ward Assignment</label>
+                  <select className="fsl" required value={newStaff.ward} onChange={e => setNewStaff({...newStaff, ward: e.target.value})}>
+                    <option value="">Select Ward</option>
+                    {WARDS.map(w => <option key={w.id} value={w.id}>{w.id} — {w.area}</option>)}
+                  </select>
+                </div>
+                <div className="fg">
+                  <label className="flbl">System Access Role</label>
+                  <select className="fsl" value={newStaff.role} onChange={e => setNewStaff({...newStaff, role: e.target.value})}>
+                    <option value="officer">Officer (Field Access)</option>
+                    <option value="admin">Admin (Full Control)</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" className="bp" style={{ marginTop: 20, width: '100%', padding: 14 }} disabled={provisioning}>
+                {provisioning ? 'Processing…' : '🚀 Create Account & Send Invite'}
+              </button>
+            </form>
+          </div>
+
+          <div className="tcard" style={{ padding: 24 }}>
+            <div className="tttl" style={{ marginBottom: 16 }}>👥 Staff Directory</div>
+            <div className="adm-table-wrap">
+              <table className="dtbl adm-dtbl">
+                <thead>
+                  <tr>
+                    <th>Name</th><th>Designation</th><th>Ward</th><th>Role</th><th>Status</th><th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {profiles.length > 0 ? profiles.map(s => (
+                    <tr key={s.id || s.name}>
+                      <td className="adm-td-bold">{s.name}</td>
+                      <td>{s.designation || 'Field Staff'}</td>
+                      <td>{s.ward_id || s.ward || '—'}</td>
+                      <td><span className={`pill p-${s.role === 'admin' ? 'crit' : 'mod'}`}>{s.role || 'officer'}</span></td>
+                      <td><span className="status-badge sb-low">Active</span></td>
+                      <td>
+                        <button className="adm-pdf-btn" onClick={async () => {
+                          const email = prompt(`Confirm official email to send reset link to:`);
+                          if (email) {
+                            await supabase.auth.resetPasswordForEmail(email);
+                            alert(`Reset link sent to ${email}`);
+                          }
+                        }}>🔑 Reset Password</button>
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>No staff profiles found. Use the form above to add one.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

@@ -173,7 +173,7 @@ const baseData = [
   },
 ];
 
-const wardsList = ['A','B','C','D','E','FN','FS','GN','GS','HE','HW','KE','KW','L','ME','MW','N','PN','PS','RC','RN','RS','S','T'];
+const wardsList = ['A','B','C','D','E','FN','FS','GN','GS','HE','HW','KE','KW','KN','L','ME','MW','N','PE','PN','PS','RC','RN','RS','S','T'];
 const categoriesList = ['mosquito-nuisance', 'breeding-stagnant', 'breeding-garbage', 'breeding-drain', 'water-muddy', 'water-smell', 'water-leakage', 'sewer-mix', 'garbage', 'drain-block', 'fever-cluster', 'dengue-case', 'malaria-case'];
 const severities = ['minor', 'moderate', 'severe', 'critical'];
 

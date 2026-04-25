@@ -44,7 +44,7 @@ export default function Summary({ complaints, onWardClick }) {
         <div className="page-hdr-row">
           <div>
             <h1 className="page-title">Ward Summary Report</h1>
-            <p className="page-sub">Full performance matrix · All 27 BMC wards · Click any row for ward profile</p>
+            <p className="page-sub">Full performance matrix · All {WARDS.length} BMC wards · Click any row for ward profile</p>
           </div>
           <span style={{ fontSize: 11, color: 'var(--text-muted)', alignSelf: 'flex-end' }}>
             🔄 Refreshes every 30 sec
@@ -73,7 +73,7 @@ export default function Summary({ complaints, onWardClick }) {
                 <th>Ward</th>
                 <th>Zone</th>
                 <th>Area</th>
-                <th>WMO</th>
+                <th>M.O.H.</th>
                 <th>SI</th>
                 <th>Total</th>
                 <th>Unresolved</th>
@@ -100,8 +100,19 @@ export default function Summary({ complaints, onWardClick }) {
                     </td>
                     <td data-label="Zone">{w.zone}</td>
                     <td data-label="Area" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{w.area}</td>
-                    <td data-label="WMO" style={{ fontSize: 11 }}>{w.wmo}</td>
-                    <td data-label="SI" style={{ fontSize: 11 }}>{w.si}</td>
+                    <td data-label="M.O.H." style={{ fontSize: 11 }}>{w.wmo}</td>
+                    <td data-label="SI" style={{ fontSize: 11 }}>
+                      {w.siTeam?.length > 0 ? (
+                        <>
+                          <div style={{ fontWeight: 600 }}>{w.siTeam[0].name}</div>
+                          {w.siTeam.length > 1 && (
+                            <div style={{ color: 'var(--blue2)', fontSize: 9, fontWeight: 700 }}>
+                              + {w.siTeam.length - 1} OTHER INSPECTORS
+                            </div>
+                          )}
+                        </>
+                      ) : '—'}
+                    </td>
                     <td data-label="Total">
                       <span style={{ fontFamily: 'var(--ff-mono)', fontWeight: 700, color: 'var(--text-primary)' }}>{total}</span>
                     </td>

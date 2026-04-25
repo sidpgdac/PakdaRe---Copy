@@ -1,9 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import confetti from 'canvas-confetti';
+import { Link, useLocation } from 'react-router-dom';
+import imageCompression from 'browser-image-compression';
+import * as turf from '@turf/turf';
 import { WARDS, ROUTE_MAP } from '../../data/wardData';
+import { useGamification, getLevel, getLevelProgress, BADGES } from '../../hooks/useGamification';
+import { useAuth } from '../../context/AuthContext';
 
-/* ── HAPTIC FEEDBACK ──────────────────────────────────────────────── */
 const haptic = {
   light:   () => navigator.vibrate && navigator.vibrate(20),
   medium:  () => navigator.vibrate && navigator.vibrate(40),
@@ -11,21 +14,51 @@ const haptic = {
   error:   () => navigator.vibrate && navigator.vibrate([50, 40, 50, 40, 50]),
 };
 
-/* ── Data ─────────────────────────────────────────────────────────── */
-const CATEGORIES = [
-  { key: 'mosquito-nuisance',  icon: '🦟', label: 'Mosquito',      group: 'Vector-borne' },
-  { key: 'breeding-stagnant',  icon: '💧', label: 'Stagnant Water', group: 'Vector-borne' },
-  { key: 'breeding-garbage',   icon: '🗑️', label: 'Garbage Site',  group: 'Vector-borne' },
-  { key: 'breeding-drain',     icon: '🚿', label: 'Drain Breeding', group: 'Vector-borne' },
-  { key: 'water-muddy',        icon: '🥤', label: 'Bad Water',      group: 'Water-borne' },
-  { key: 'water-leakage',      icon: '🔧', label: 'Pipe Leak',      group: 'Water-borne' },
-  { key: 'sewer-mix',          icon: '⚠️', label: 'Sewage Mix',    group: 'Water-borne' },
-  { key: 'garbage',            icon: '♻️', label: 'Garbage',        group: 'Sanitation' },
-  { key: 'drain-block',        icon: '🚫', label: 'Blocked Drain',  group: 'Sanitation' },
-  { key: 'fever-cluster',      icon: '🤒', label: 'Fever Cluster',  group: 'Disease' },
-  { key: 'dengue-case',        icon: '🏥', label: 'Dengue',         group: 'Disease' },
-  { key: 'malaria-case',       icon: '🩺', label: 'Malaria',        group: 'Disease' },
+// Grouped with severity so UI can show hierarchy
+const CATEGORY_GROUPS = [
+  {
+    key: 'emergency',
+    label: '🚨 Emergency',
+    className: 'emergency',
+    categories: [
+      { key: 'dengue-case',   icon: '🏥', label: 'Dengue Case' },
+      { key: 'malaria-case',  icon: '🩺', label: 'Malaria Case' },
+      { key: 'fever-cluster', icon: '🤒', label: 'Fever Cluster' },
+    ],
+  },
+  {
+    key: 'vector',
+    label: '🦟 Vector / Breeding',
+    className: 'vector',
+    categories: [
+      { key: 'mosquito-nuisance', icon: '🦟', label: 'Mosquito' },
+      { key: 'breeding-stagnant', icon: '💧', label: 'Stagnant Water' },
+      { key: 'breeding-garbage',  icon: '🗑️', label: 'Garbage Site' },
+      { key: 'breeding-drain',    icon: '🚿', label: 'Drain Breeding' },
+    ],
+  },
+  {
+    key: 'water',
+    label: '💧 Water-borne',
+    className: 'water',
+    categories: [
+      { key: 'water-muddy',   icon: '🥤', label: 'Bad Water' },
+      { key: 'water-leakage', icon: '🔧', label: 'Pipe Leak' },
+      { key: 'sewer-mix',     icon: '⚠️', label: 'Sewage Mix' },
+    ],
+  },
+  {
+    key: 'sanitation',
+    label: '♻️ Sanitation',
+    className: 'sanitation',
+    categories: [
+      { key: 'garbage',    icon: '♻️', label: 'Garbage' },
+      { key: 'drain-block', icon: '🚫', label: 'Blocked Drain' },
+    ],
+  },
 ];
+
+const ALL_CATEGORIES = CATEGORY_GROUPS.flatMap(g => g.categories);
 
 const SEV_OPTS = [
   { key: 'minor',    emoji: '🟢', label: 'Minor',    desc: 'Low risk',     color: 'var(--green)' },
@@ -41,7 +74,6 @@ const mkId = () => {
   return `BMC-${d.getDate().toString().padStart(2,'0')}${(d.getMonth()+1).toString().padStart(2,'0')}-${Math.floor(1000+Math.random()*8999)}`;
 };
 
-/* ── Step progress bar ────────────────────────────────────────────── */
 function StepBar({ step }) {
   return (
     <div className="wiz-bar">
@@ -56,8 +88,25 @@ function StepBar({ step }) {
   );
 }
 
-/* ── Main Component ─────────────────────────────────────────────────── */
-export default function FileReport({ onSubmit, showToast, isModal }) {
+// DUPLICATE DETECTION: find nearby complaints within 100m of same category
+function findNearby(complaints, lat, lng, category) {
+  if (!lat || !lng || !complaints?.length) return [];
+  const pt = turf.point([lng, lat]);
+  return complaints.filter(c => {
+    if (!c.lat || !c.lng) return false;
+    if (c.resolved) return false;
+    if (c.category !== category) return false;
+    const dist = turf.distance(pt, turf.point([c.lng, c.lat]), { units: 'meters' });
+    return dist <= 100;
+  }).slice(0, 3);
+}
+
+export default function FileReport({ onSubmit, showToast, isModal, complaints = [] }) {
+  const locationState = useLocation().state;
+  const asOfficer     = !!locationState?.asOfficer;
+  const { user, staffProfile } = useAuth();
+  const { profile, awardPoints } = useGamification();
+
   const [step,        setStep]        = useState(0);
   const [cat,         setCat]         = useState('');
   const [sev,         setSev]         = useState('');
@@ -68,13 +117,30 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
   const [ward,        setWard]        = useState('');
   const [addr,        setAddr]        = useState('');
   const [desc,        setDesc]        = useState('');
+  const [phone,       setPhone]       = useState('');
   const [photos,      setPhotos]      = useState([]);
   const [submitting,  setSubmitting]  = useState(false);
   const [done,        setDone]        = useState(false);
   const [newId,       setNewId]       = useState('');
   const [copied,      setCopied]      = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null); // null | 0-100
+  const [dupWarning,  setDupWarning]  = useState(false);
+  const [dupDismissed,setDupDismissed]= useState(false);
+  const [earnedPoints,setEarnedPoints]= useState(0);
+  const [newBadges,   setNewBadges]   = useState([]);
   const cameraRef = useRef(null);
   const fileRef   = useRef(null);
+
+  // Nearby duplicate complaints when GPS + category both set
+  const nearbyDups = useMemo(() => {
+    if (!lat || !lng || !cat) return [];
+    return findNearby(complaints, lat, lng, cat);
+  }, [complaints, lat, lng, cat]);
+
+  useEffect(() => {
+    if (nearbyDups.length > 0 && step === 0 && !dupDismissed) setDupWarning(true);
+    else setDupWarning(false);
+  }, [nearbyDups, step, dupDismissed]);
 
   /* GPS */
   const requestGPS = () => {
@@ -99,29 +165,50 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
   };
   useEffect(() => { requestGPS(); }, []);
 
-  /* Auto-save draft after step 2 */
+  /* Auto-save draft */
   useEffect(() => {
     if (step >= 2) {
       localStorage.setItem('pakdare_draft', JSON.stringify({ cat, sev, ward, addr, step }));
     }
   }, [step, cat, sev, ward, addr]);
 
-  /* Photos */
-  const readFiles = (files) => {
-    Array.from(files).forEach(f => {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPhotos(prev => [...prev, ev.target.result]);
-      reader.readAsDataURL(f);
-    });
+  /* Photo upload with compression + progress feedback */
+  const readFiles = async (files) => {
+    setUploadProgress(0);
+    const fileArr = Array.from(files);
+    const results = [];
+    for (let i = 0; i < fileArr.length; i++) {
+      try {
+        const compressed = await imageCompression(fileArr[i], {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1280,
+          useWebWorker: true,
+          onProgress: (p) => setUploadProgress(Math.round(((i / fileArr.length) + (p / 100) / fileArr.length) * 100)),
+        });
+        const reader = new FileReader();
+        await new Promise(res => {
+          reader.onload = (ev) => { results.push(ev.target.result); res(); };
+          reader.readAsDataURL(compressed);
+        });
+      } catch {
+        const reader = new FileReader();
+        await new Promise(res => {
+          reader.onload = (ev) => { results.push(ev.target.result); res(); };
+          reader.readAsDataURL(fileArr[i]);
+        });
+      }
+    }
+    setPhotos(prev => [...prev, ...results]);
+    setUploadProgress(null);
   };
   const removePhoto = (i) => setPhotos(prev => prev.filter((_, j) => j !== i));
 
   /* Navigation */
   const canNext = [
-    cat && sev,           // Step 0: category + severity required
-    ward,                  // Step 1: ward required
-    desc.trim().length > 8, // Step 2: description
-    true,                  // Step 3: review
+    cat && sev,
+    ward,
+    desc.trim().length > 8,
+    true,
   ][step];
 
   const next = () => {
@@ -146,43 +233,58 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
     setSubmitting(true);
     const id = mkId();
     setTimeout(() => {
-      const wardObj = WARDS.find(w => w.id === ward);
-      const route   = ROUTE_MAP[cat];
-      onSubmit({
+      const wardObj    = WARDS.find(w => w.id === ward);
+      const route      = ROUTE_MAP[cat];
+      const officerTag = asOfficer && (staffProfile?.name || user?.email?.split('@')[0]);
+      const complaintData = {
         id, ward,
-        location: addr || `${wardObj?.area || ward} area`,
-        lat: lat ?? wardObj?.lat, lng: lng ?? wardObj?.lng,
-        category: cat, severity: sev, desc: desc.trim(), status: 'Open',
-        assignedTo: wardObj ? `${wardObj.wmo} (WMO)` : 'Pending Assignment',
-        time: new Date().toISOString(), resolved: false, isDemo: false,
-        escalations: [`Filed → ${route?.split('→')[0]?.trim() || 'Ward Office'} (just now)`],
+        location:   addr || `${wardObj?.area || ward} area`,
+        lat:        lat ?? wardObj?.lat,
+        lng:        lng ?? wardObj?.lng,
+        category:   cat, severity: sev, 
+        desc:       phone ? `${desc.trim()}\n\nContact: ${phone}` : desc.trim(), 
+        status:     'Open',
+        assignedTo: wardObj ? `${wardObj.siTeam?.[0]?.name || 'Staff'} (S.I.)` : 'Pending Assignment',
+        time:       new Date().toISOString(),
+        resolved:   false, isDemo: false,
+        escalations: [`${asOfficer ? 'Officer' : 'Citizen'} Filed → Assigned to ${wardObj?.siTeam?.[0]?.name || 'Sanitary Inspector'} (Just now)`],
         hierarchy: [
-          { role: 'Citizen', initials: 'CZ', level: 4 },
-          { role: wardObj?.wmo?.split(' ')[0] || 'WMO', initials: 'WM', level: 2 },
+          { role: 'S.I.',    name: wardObj?.siTeam?.[0]?.name || 'Sanitary Inspector', level: 4, status: 'Active' },
+          { role: 'M.O.H.',  name: wardObj?.wmo || 'Medical Officer',    level: 3, status: 'Pending' },
+          { role: 'AHO',     name: 'Dr. Sachin Bhosle',                 level: 2, status: 'Pending' }, 
+          { role: 'DEHO',    name: 'Dr. Varsha Puri',                   level: 1, status: 'Pending' },
         ],
         photos,
-      });
+      };
+      onSubmit(complaintData);
+
+      // Award gamification points (citizen only — officers have performance score)
+      if (!asOfficer) {
+        const pts = awardPoints(complaintData);
+        setEarnedPoints(pts);
+        // Capture new badges from the profile update
+        setTimeout(() => {
+          // Read latest profile for new badges
+          setNewBadges(prev => prev); // will be updated by profile.lastEarned
+        }, 50);
+      }
+
       localStorage.removeItem('pakdare_draft');
       setNewId(id); setSubmitting(false); setDone(true);
     }, 1200);
   };
 
   useEffect(() => {
-    if (done) {
-      haptic.success();
-      confetti({
-        particleCount: 120,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444']
-      });
-    }
+    if (done) haptic.success();
+    // No confetti — disease/health context; success screen is sufficient feedback
   }, [done]);
 
   const reset = () => {
     haptic.light();
-    setStep(0); setCat(''); setSev(''); setWard(''); setAddr('');
+    setStep(0); setCat(''); setSev(''); setWard(''); setAddr(''); setPhone('');
     setDesc(''); setPhotos([]); setDone(false); setNewId(''); setCopied(false);
+    setDupWarning(false); setDupDismissed(false);
+    setEarnedPoints(0); setNewBadges([]);
     requestGPS();
   };
 
@@ -197,13 +299,13 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
   const shareId = () => {
     haptic.light();
     if (navigator.share) {
-      navigator.share({ title: 'BMC Complaint ID', text: `My BMC complaint ID: ${newId}\nTrack at: pakdare.bmc.gov.in`, url: window.location.origin });
+      navigator.share({ title: 'BMC Complaint ID', text: `My BMC complaint ID: ${newId}\nTrack at: ${window.location.origin}/track/${newId}`, url: `${window.location.origin}/track/${newId}` });
     } else {
       copyId();
     }
   };
 
-  /* ── SUCCESS SCREEN ─────────────────────────────────────────────── */
+  /* ── SUCCESS SCREEN ───────────────────────────────────────────── */
   if (done) return (
     <div className={isModal ? '' : 'page'}>
       {!isModal && <div className="page-hdr"><h1 className="page-title">File a New Report</h1></div>}
@@ -214,16 +316,42 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
             transition={{ type: 'spring', stiffness: 400, damping: 20, delay: 0.1 }}>
             ✅
           </motion.div>
-          <h2 className="wiz-success-title">Report Saved!</h2>
+          <h2 className="wiz-success-title">Report Submitted!</h2>
           <p className="wiz-success-sub">Auto-routed to the responsible officer chain.</p>
+
+          {/* Gamification reward — citizen only */}
+          {!asOfficer && earnedPoints > 0 && (
+            <motion.div
+              className="wiz-points-earned"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 20, delay: 0.3 }}
+            >
+              <div className="wiz-points-burst">+{earnedPoints} pts</div>
+              <div className="wiz-points-level">
+                {getLevel(profile.points).icon} {getLevel(profile.points).name}
+                <span style={{ opacity: 0.7, fontSize: 12 }}> · {profile.points} total pts</span>
+              </div>
+              {profile.lastEarned?.badges?.length > 0 && (
+                <div className="wiz-badges-earned">
+                  {profile.lastEarned.badges.map(bid => {
+                    const b = BADGES.find(x => x.id === bid);
+                    return b ? (
+                      <div key={bid} className="wiz-badge-item">
+                        <span>{b.icon}</span> <strong>{b.name}</strong> unlocked!
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              )}
+            </motion.div>
+          )}
 
           <div className="wiz-id-box">
             <div className="wiz-id-label">Your Complaint ID</div>
             <div className="wiz-id-val">{newId}</div>
             <div className="wiz-id-actions">
-              <button className="wiz-id-copy" onClick={copyId}>
-                {copied ? '✓ Copied!' : '📋 Copy ID'}
-              </button>
+              <button className="wiz-id-copy" onClick={copyId}>{copied ? '✓ Copied!' : '📋 Copy ID'}</button>
               <button className="wiz-id-share" onClick={shareId}>📤 Share</button>
             </div>
           </div>
@@ -237,7 +365,11 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
             )}
           </div>
 
-          <button className="btn-sub" onClick={reset} style={{ marginTop: 16 }}>
+          <Link to={`/track/${newId}`} className="btn-primary" style={{ marginTop: 12, width: '100%', justifyContent: 'center', textDecoration: 'none' }}>
+            🔍 Track This Complaint
+          </Link>
+
+          <button className="btn-ghost" onClick={reset} style={{ marginTop: 10, width: '100%', justifyContent: 'center' }}>
             ➕ Submit Another Report
           </button>
         </motion.div>
@@ -245,9 +377,9 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
     </div>
   );
 
-  /* ── WIZARD FORM ────────────────────────────────────────────────── */
+  /* ── WIZARD ───────────────────────────────────────────────────── */
   const wardObj = WARDS.find(w => w.id === ward);
-  const catObj  = CATEGORIES.find(c => c.key === cat);
+  const catObj  = ALL_CATEGORIES.find(c => c.key === cat);
   const sevObj  = SEV_OPTS.find(s => s.key === sev);
   const route   = ward && cat ? ROUTE_MAP[cat] : null;
 
@@ -255,18 +387,19 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
     <div className={isModal ? '' : 'page'}>
       {!isModal && (
         <div className="page-hdr">
-          <h1 className="page-title">File a New Report</h1>
-          <p className="page-sub">Anonymous · GPS-tagged · Auto-routed</p>
+          <h1 className="page-title">{asOfficer ? 'Officer Report' : 'File a New Report'}</h1>
+          <p className="page-sub">
+            {asOfficer
+              ? `Filed as: ${staffProfile?.name || user?.email?.split('@')[0] || 'Officer'} · ${staffProfile?.designation || 'Field Officer'}`
+              : 'Anonymous · GPS-tagged · Auto-routed'}
+          </p>
         </div>
       )}
 
       <div className="form-wrap">
         <div className="fcard wiz-card">
-
-          {/* Step bar */}
           <StepBar step={step} />
 
-          {/* GPS strip — always visible on steps 1+ */}
           {step >= 1 && (
             <div className={`gps-strip ${gpsState === 'loading' ? 'loading' : gpsState === 'error' ? 'error' : ''}`}>
               <span style={{ fontSize: 18 }}>📍</span>
@@ -279,7 +412,6 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
             </div>
           )}
 
-          {/* ── ANIMATED STEP BODY ─────────────────────────────────── */}
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -295,22 +427,49 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
                 <div>
                   <div className="wiz-step-title">What's the issue?</div>
 
-                  {/* Category icon grid */}
-                  <div className="cat-grid">
-                    {CATEGORIES.map(c => (
-                      <button
-                        key={c.key}
-                        className={`cat-card${cat === c.key ? ' active' : ''}`}
-                        onClick={() => { haptic.light(); setCat(c.key); }}
-                      >
-                        <span className="cat-ico">{c.icon}</span>
-                        <span className="cat-lbl">{c.label}</span>
-                        {cat === c.key && <span className="cat-check">✓</span>}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Duplicate warning */}
+                  {dupWarning && nearbyDups.length > 0 && (
+                    <div className="dup-warning">
+                      <span className="dup-warning-icon">⚠️</span>
+                      <div className="dup-warning-text">
+                        <div className="dup-warning-title">
+                          {nearbyDups.length} similar report{nearbyDups.length > 1 ? 's' : ''} already filed nearby
+                        </div>
+                        <div className="dup-warning-sub">
+                          {nearbyDups[0].id} — {nearbyDups[0].location} · {nearbyDups[0].status}
+                        </div>
+                        <div className="dup-warning-actions">
+                          <button className="dup-action-btn" onClick={() => { setDupWarning(false); setDupDismissed(true); }}>
+                            Still file mine
+                          </button>
+                          <Link to={`/track/${nearbyDups[0].id}`} className="dup-action-btn confirm">
+                            Track existing →
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-                  {/* Severity — big buttons */}
+                  {/* Categorised grid with group headers */}
+                  {CATEGORY_GROUPS.map(group => (
+                    <div key={group.key}>
+                      <div className={`cat-group-hdr ${group.className}`}>{group.label}</div>
+                      <div className="cat-grid" style={{ marginBottom: 4 }}>
+                        {group.categories.map(c => (
+                          <button
+                            key={c.key}
+                            className={`cat-card${cat === c.key ? ' active' : ''}`}
+                            onClick={() => { haptic.light(); setCat(c.key); setDupDismissed(false); }}
+                          >
+                            <span className="cat-ico">{c.icon}</span>
+                            <span className="cat-lbl">{c.label}</span>
+                            {cat === c.key && <span className="cat-check">✓</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
                   <div className="wiz-step-title" style={{ marginTop: 20 }}>How serious?</div>
                   <div className="sev-big-grid">
                     {SEV_OPTS.map(o => (
@@ -337,7 +496,6 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
                 <div>
                   <div className="wiz-step-title">Where is the issue?</div>
 
-                  {/* Ward auto-detected indicator */}
                   {gpsState === 'ok' && ward && (
                     <div className="wiz-gps-banner">
                       <span>📍</span>
@@ -367,7 +525,6 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
                     />
                   </div>
 
-                  {/* Route preview */}
                   {route && (
                     <div className="route-box" style={{ marginTop: 16 }}>
                       <div className="route-l">🔀 Your report routes to</div>
@@ -396,27 +553,52 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
                     </div>
                   </div>
 
-                  {/* Photo section — camera first, then gallery */}
+                  <div className="fg" style={{ marginBottom: 16 }}>
+                    <label className="flbl">📱 Mobile Number <span style={{ color: 'var(--text-muted)' }}>(optional · for status updates)</span></label>
+                    <input
+                      className="fi"
+                      type="tel"
+                      value={phone}
+                      onChange={e => setPhone(e.target.value)}
+                      placeholder="e.g. 9876543210"
+                      maxLength={15}
+                    />
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                      We'll contact you when your complaint is resolved.
+                    </div>
+                  </div>
+
                   <label className="flbl">📷 Photo Evidence <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
 
-                  {/* Camera + gallery buttons */}
                   <div className="photo-cta-row">
                     <input ref={cameraRef} type="file" accept="image/*" capture="environment" multiple
                       style={{ display: 'none' }} onChange={e => readFiles(e.target.files)} />
-                    <input ref={fileRef}   type="file" accept="image/*,video/*" multiple
+                    <input ref={fileRef} type="file" accept="image/*" multiple
                       style={{ display: 'none' }} onChange={e => readFiles(e.target.files)} />
 
-                    <button className="photo-cta-cam" onClick={() => cameraRef.current?.click()}>
+                    <button className="photo-cta-cam" onClick={() => cameraRef.current?.click()} disabled={uploadProgress !== null}>
                       <span style={{ fontSize: 22 }}>📷</span>
                       <span>Take Photo</span>
                     </button>
-                    <button className="photo-cta-gal" onClick={() => fileRef.current?.click()}>
+                    <button className="photo-cta-gal" onClick={() => fileRef.current?.click()} disabled={uploadProgress !== null}>
                       <span style={{ fontSize: 22 }}>🖼️</span>
                       <span>Gallery</span>
                     </button>
                   </div>
 
-                  {/* Photo preview grid */}
+                  {/* Upload progress bar */}
+                  {uploadProgress !== null && (
+                    <div className="photo-upload-progress">
+                      <div className="photo-upload-label">
+                        <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        Compressing photo… {uploadProgress}%
+                      </div>
+                      <div className="photo-upload-track">
+                        <div className="photo-upload-fill" style={{ width: `${uploadProgress}%` }} />
+                      </div>
+                    </div>
+                  )}
+
                   {photos.length > 0 && (
                     <div className="photo-grid" style={{ marginTop: 12 }}>
                       {photos.map((src, i) => (
@@ -469,12 +651,31 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
                         <span className="wiz-review-v">{photos.length} attached</span>
                       </div>
                     )}
+                    {phone && (
+                      <div className="wiz-review-row">
+                        <span className="wiz-review-l">Mobile</span>
+                        <span className="wiz-review-v">📱 {phone}</span>
+                      </div>
+                    )}
+                    {asOfficer && (
+                      <div className="wiz-review-row" style={{ background: 'rgba(16,185,129,0.06)', borderRadius: 'var(--r12)', padding: '10px 14px', marginTop: 8 }}>
+                        <span className="wiz-review-l">Filed by</span>
+                        <span className="wiz-review-v" style={{ color: 'var(--green2)' }}>
+                          👷 {staffProfile?.name || user?.email?.split('@')[0]} (Officer)
+                        </span>
+                      </div>
+                    )}
                     {route && (
                       <div className="wiz-review-row" style={{ background: 'rgba(37,99,235,0.06)', borderRadius: 'var(--r12)', padding: '10px 14px', marginTop: 8 }}>
                         <span className="wiz-review-l">Routes to</span>
                         <span className="wiz-review-v" style={{ color: 'var(--blue2)' }}>{route}</span>
                       </div>
                     )}
+                    {sev === 'critical' || sev === 'severe' ? (
+                      <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 'var(--r8)', background: 'rgba(234,0,41,0.08)', border: '1px solid rgba(234,0,41,0.2)', fontSize: 11, color: 'var(--red2)' }}>
+                        ⏱️ SLA: {sev === 'critical' ? '4 hours' : '12 hours'} response time
+                      </div>
+                    ) : null}
                   </div>
                   <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', marginTop: 10 }}>
                     🔒 Anonymous · GPS-tagged · Auto-routed to responsible officer chain
@@ -485,19 +686,14 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
             </motion.div>
           </AnimatePresence>
 
-          {/* ── NAVIGATION BUTTONS ─────────────────────────────────── */}
+          {/* Navigation */}
           <div className="wiz-nav">
             {step > 0 ? (
               <button className="wiz-back" onClick={back}>← Back</button>
-            ) : (
-              <div />
-            )}
+            ) : <div />}
 
             {step < 3 ? (
-              <button
-                className={`wiz-next${canNext ? '' : ' dim'}`}
-                onClick={next}
-              >
+              <button className={`wiz-next${canNext ? '' : ' dim'}`} onClick={next}>
                 Next →
               </button>
             ) : (
@@ -506,7 +702,6 @@ export default function FileReport({ onSubmit, showToast, isModal }) {
               </button>
             )}
           </div>
-
         </div>
       </div>
     </div>

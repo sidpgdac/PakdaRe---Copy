@@ -44,7 +44,7 @@ export default function ChatBot({ onOpenReport }) {
         reply = 'Tap "File a Report" in the nav or I can open the form for you.';
         onOpenReport();
       } else if (lower.includes('dengue') || lower.includes('malaria')) {
-        reply = '🦟 Vector-borne diseases like dengue and malaria are actively tracked across all 27 wards. Check the Map page for hot zones.';
+        reply = '🦟 Vector-borne diseases like dengue and malaria are actively tracked across all 26 wards. Check the Map page for hot zones.';
       } else if (lower.includes('water')) {
         reply = '💧 Water contamination complaints are routed to the Hydraulic Engineer and DMO. Go to Complaints → 💧 Water filter.';
       } else if (lower.includes('hi') || lower.includes('hello')) {

@@ -154,7 +154,7 @@ export default function Complaints({ complaints, onDetail, onAlertBranch }) {
     return list;
   }, [complaints, filter, search, sort]);
 
-  // Single O(N) pass → grouped by ward; replaces O(N×27) per render
+  // Single O(N) pass → grouped by ward; replaces O(N×26) per render
   const byWard = useMemo(() => {
     const map = {};
     filtered.forEach(c => {
