@@ -682,17 +682,35 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .nav-tabs {
   max-width: 1440px; margin: 0 auto;
   padding: 0 clamp(16px,3vw,28px);
-  display: flex; gap: 0; overflow-x: auto;
+  display: flex; gap: 0; overflow-x: auto; align-items: center;
 }
 .nav-tabs::-webkit-scrollbar { height: 0; }
-.ntab {
-  padding: 14px 22px; font-size: 13px; font-weight: 600;
-  color: var(--text-muted); border-bottom: 2px solid transparent;
-  white-space: nowrap; transition: all .2s; display: flex; align-items: center;
-  gap: 8px; flex-shrink: 0; background: none; border-top: none; border-left: none; border-right: none;
-  position: relative; letter-spacing: .1px;
+
+/* Role pill — desktop */
+.nav-role-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
+  padding: 5px 12px; border-radius: var(--r-full);
+  flex-shrink: 0; margin-right: 12px;
 }
-.ntab-i { position: relative; font-size: 15px; line-height: 1; }
+.nav-role-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  animation: blink 2.5s ease-in-out infinite;
+}
+
+.ntab {
+  padding: 13px 18px; font-size: 12.5px; font-weight: 600;
+  color: var(--text-muted); border-bottom: 2px solid transparent;
+  white-space: nowrap; transition: color .2s, background .2s; display: flex; align-items: center;
+  gap: 7px; flex-shrink: 0; background: none; border-top: none; border-left: none; border-right: none;
+  position: relative; letter-spacing: .05px;
+}
+.ntab-i {
+  display: flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; flex-shrink: 0;
+  transition: transform .2s;
+}
+.ntab:hover .ntab-i { transform: translateY(-1px); }
 .ntab-l { display: inline-block; }
 .ntab::after {
   content: ''; position: absolute; bottom: -1px; left: 50%; right: 50%;
@@ -701,7 +719,15 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .ntab:hover { color: var(--text-secondary); }
 .ntab.active { color: var(--text-primary); }
-.ntab.active::after { left: 16px; right: 16px; }
+.ntab.active .ntab-i { color: var(--blue2); }
+.ntab.active::after { left: 12px; right: 12px; }
+.ntab-badge {
+  position: absolute; top: 8px; right: 4px;
+  background: var(--red); color: #fff; font-size: 9px; font-weight: 700;
+  padding: 1px 4px; border-radius: 20px; min-width: 16px; text-align: center;
+  font-family: var(--ff-mono); box-shadow: 0 0 0 2px var(--bg-surface);
+  animation: glowPulseRed 2s ease-in-out infinite;
+}
 .nbadge {
   position: absolute; top: -7px; right: -9px;
   background: var(--red); color: #fff; font-size: 9px; font-weight: 700;
@@ -709,6 +735,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
   font-family: var(--ff-mono); box-shadow: 0 0 0 2px var(--bg-surface);
   animation: glowPulseRed 2s ease-in-out infinite;
 }
+
 
 /* ── CONTAINER + PAGES ───────────────────────────────────────────── */
 .container {
@@ -2325,16 +2352,20 @@ input, select, textarea { font-family: inherit; color: inherit; }
     box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
   }
   .nav-tabs { justify-content: space-around; padding: 0 4px; gap: 0; }
+  .nav-role-pill { display: none; }
   .ntab {
-    flex: 1; flex-direction: column; gap: 3px;
+    flex: 1; flex-direction: column; gap: 4px;
     padding: 9px 4px 10px; border-bottom: none !important;
     border-top: 2px solid transparent; border-radius: 0;
     font-size: 10px; min-height: 56px; justify-content: center;
   }
-  .ntab-i { font-size: 19px; }
+  .ntab-i {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+  }
   .ntab.active {
     border-top-color: var(--blue2);
-    background: linear-gradient(180deg, rgba(37,99,235,0.1) 0%, transparent 100%);
+    background: linear-gradient(180deg, rgba(37,99,235,0.08) 0%, transparent 100%);
   }
 }
 
@@ -2903,10 +2934,12 @@ path.mumbai-border-inner {
     z-index: 0;
   }
   .mob-tab-ico {
-    font-size: 22px;
-    line-height: 1;
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
     position: relative; z-index: 1;
+    transition: transform 0.2s;
   }
+  .mob-tab.active .mob-tab-ico { transform: translateY(-1px); }
   .mob-tab-lbl {
     font-size: 10px;
     font-weight: 700;
@@ -2987,7 +3020,10 @@ path.mumbai-border-inner {
   }
   .mob-more-item:hover  { background: var(--glass-bg2); border-color: var(--border2); }
   .mob-more-item.active { background: rgba(37,99,235,0.12); border-color: rgba(37,99,235,0.4); color: var(--blue2); }
-  .mob-more-ico { font-size: 24px; line-height: 1; }
+  .mob-more-ico {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+  }
   .mob-more-lbl { font-size: 11px; font-weight: 600; text-align: center; line-height: 1.2; }
 
   /* ── CONTAINER — bottom padding for bottom nav ─────────────────── */

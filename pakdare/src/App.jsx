@@ -12,7 +12,7 @@ import StaffLogin from './components/pages/StaffLogin';
 import TrackComplaint from './components/pages/TrackComplaint';
 import WardModal from './components/modals/WardModal';
 import ComplaintModal from './components/modals/ComplaintModal';
-import ChatBot from './components/ChatBot';
+import AssistiveTouch from './components/AssistiveTouch';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ToastContainer, useToast } from './components/ui/Toast';
 import { useComplaints } from './hooks/useComplaints';
@@ -381,7 +381,7 @@ function AppContent() {
         />
       )}
 
-      <ChatBot onOpenReport={() => navigate('/report')} />
+      <AssistiveTouch navigate={navigate} onOpenReport={() => navigate('/report')} />
       <ToastContainer toasts={toasts} />
     </>
   );
