@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { WARDS } from '../../data/wardData';
+import ComplaintTimer from '../ui/ComplaintTimer';
 
 const STATUS_STEPS = ['Filed', 'Assigned', 'In Progress', 'Resolved'];
 
@@ -23,6 +24,9 @@ export default function TrackComplaint({ complaints, fetchComplaintDetail }) {
   const [searchMode, setSearchMode] = useState('id'); // 'id' | 'phone'
   const [phoneComplaints, setPhoneComplaints] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [searchId, setSearchId] = useState(id || '');
+  const [loading, setLoading] = useState(!!id);
+  const justFiled = location.state?.justFiled || false;
 
   useEffect(() => {
     if (searchMode === 'phone') {
@@ -310,19 +314,17 @@ export default function TrackComplaint({ complaints, fetchComplaintDetail }) {
             )}
           </div>
 
-          {/* SLA estimate if not resolved */}
+          {/* Live SLA Timer if not resolved */}
           {!complaint.resolved && (
-            <div className="tcard track-sla-card">
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            <div className="tcard track-sla-card" style={{ padding: '16px' }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
                 📅 <strong>Expected resolution:</strong>{' '}
                 {complaint.severity === 'critical' ? 'Within 4 hours' :
                  complaint.severity === 'severe'   ? 'Within 12 hours' :
                  complaint.severity === 'moderate' ? 'Within 24 hours' :
                                                      'Within 48 hours'}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                SLA based on severity level · Times are from initial filing
-              </div>
+              <ComplaintTimer complaint={complaint} />
             </div>
           )}
 

@@ -238,7 +238,7 @@ function AppContent() {
                 </ErrorBoundary>
               } />
 
-              <Route path="/track/:id" element={
+              <Route path="/track/:id?" element={
                 <ErrorBoundary>
                   <TrackComplaint complaints={complaints} fetchComplaintDetail={fetchComplaintDetail} />
                 </ErrorBoundary>

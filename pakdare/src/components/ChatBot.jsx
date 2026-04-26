@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion';
 import { useState, useRef, useEffect } from 'react';
 import { timeAgo } from '../utils/dateHelper';
 
@@ -24,6 +25,7 @@ export default function ChatBot({ onOpenReport }) {
   ]);
   const [typing, setTyping] = useState(false);
   const bodyRef = useRef(null);
+  const constraintsRef = useRef(null);
 
   useEffect(() => {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
@@ -62,16 +64,35 @@ export default function ChatBot({ onOpenReport }) {
 
   return (
     <>
-      {/* FAB Button — directly opens Report modal */}
-      <button
+      <div 
+        ref={constraintsRef} 
+        style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 4999 }} 
+      />
+
+      {/* FAB Button — draggable and openable */}
+      <motion.button
+        drag
+        dragConstraints={constraintsRef}
+        dragElastic={0.1}
+        dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+        whileHover={{ scale: 1.1, rotate: 5 }}
+        whileTap={{ scale: 0.9, rotate: -5 }}
         className="cb-btn"
         onClick={() => { onOpenReport(); }}
-        title="File a Report"
+        onDoubleClick={() => setOpen(!open)}
+        title="Draggable: Double-click for Chat, Single-click to Report"
         id="chatbot-fab"
         aria-label="File a Report"
+        style={{ touchAction: 'none', cursor: 'grab' }}
       >
         <span className="cb-icon" style={{ fontSize: 26 }}>📝</span>
-      </button>
+        
+        {/* Drag handle visual hint */}
+        <div style={{ 
+          position: 'absolute', bottom: 4, width: 12, height: 2, 
+          background: 'rgba(255,255,255,0.4)', borderRadius: 2 
+        }} />
+      </motion.button>
 
       {/* Chat Panel */}
       {open && (

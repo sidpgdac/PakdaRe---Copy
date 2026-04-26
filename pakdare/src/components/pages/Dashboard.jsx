@@ -91,6 +91,9 @@ export default function Dashboard({ complaints, navigate, onWardClick, seedDemo,
             <p className="page-sub">Real-time disease surveillance · All {WARDS.length} BMC Wards · Mumbai</p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="bp" onClick={seedDemo} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--orange)' }}>
+              🧪 Add Dummy Data
+            </button>
             <button className="bp" onClick={() => navigate('/report')} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               ➕ File Report
             </button>

@@ -458,13 +458,19 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
 
     // 1. Rebuild Heatmap
     const heatData = WARDS.map(w => [w.lat, w.lng, w.risk / 100]);
-    if (L.heatLayer) {
+    if (L.heatLayer && map.getPane('overlayPane')) {
       const heatL = L.heatLayer(heatData, {
         radius: 45, blur: 35, maxZoom: 15, max: 1,
         gradient: { 0: 'rgba(254,237,222,0)', 0.2: '#fdbe85', 0.4: '#fd8d3c', 0.6: '#e6550d', 0.8: '#a63603', 1: '#7f2704' }
       });
       layersRef.current.heat = heatL;
-      if (activeLayers.has('heatmap')) heatL.addTo(map);
+      if (activeLayers.has('heatmap')) {
+        try {
+          heatL.addTo(map);
+        } catch (e) {
+          console.warn('[PakdaRe] Heatmap addition failed:', e);
+        }
+      }
     }
 
     // 2. Rebuild Bubbles and Dots using pre-computed wardStatsMap

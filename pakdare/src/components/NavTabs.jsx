@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 const CITIZEN_TABS = [
   { id: 'map',         path: '/map',         icon: '🗺️',  label: 'Map',         short: 'Map',         mobilePriority: 1 },
   { id: 'report',      path: '/report',      icon: '➕',   label: 'Report',      short: 'Report',      mobilePriority: 2 },
-  { id: 'track',       path: '/track/',      icon: '🔍',   label: 'Track',       short: 'Track',       mobilePriority: 3 },
+  { id: 'track',       path: '/track',       icon: '🔍',   label: 'Track',       short: 'Track',       mobilePriority: 3 },
   { id: 'leaderboard', path: '/leaderboard', icon: '🏆',   label: 'Rankings',    short: 'Ranks',       mobilePriority: 4 },
   { id: 'gallery',     path: '/gallery',     icon: '🖼️',  label: 'Gallery',     short: 'Gallery',     mobilePriority: 5 },
   { id: 'login',       path: '/login',       icon: '🔐',   label: 'Staff Login', short: 'Login',       mobilePriority: 6 },
