@@ -29,6 +29,9 @@ export default defineConfig({
   css: {
     lightningcss: false,
   },
+  optimizeDeps: {
+    include: ['react-window'],
+  },
   build: {
     rollupOptions: {
       output: {

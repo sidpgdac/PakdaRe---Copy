@@ -192,6 +192,10 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
   const [complaintSheetData, setComplaintSheetData] = useState(null);
   const [loadingSheet,       setLoadingSheet]       = useState(false);
   const layerDDRef = useRef(null);
+  // Keep a ref to onWardClick so the map init effect never needs to re-run
+  // just because the parent re-renders and passes a new function reference.
+  const onWardClickRef = useRef(onWardClick);
+  useEffect(() => { onWardClickRef.current = onWardClick; }, [onWardClick]);
 
   // Single O(N) pass over complaints → per-ward stats map; replaces O(N×26×5) per render
   const wardStatsMap = useMemo(() => {
@@ -253,11 +257,15 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
     };
 
     const map = L.map(mapRef.current, {
-      zoomControl: true,
+      zoomControl: false,   // we'll reposition it
+      preferCanvas: true,   // ✅ canvas rendering — far fewer DOM nodes on mobile
       maxBounds: MAX_PAN_BOUNDS,
       maxBoundsViscosity: 0.8,
       minZoom: 11
     });
+
+    // Move zoom control to bottom-right so it's thumb-reachable on mobile
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
     
     map.fitBounds(MUMBAI_BOUNDS, { padding: [50, 50], maxZoom: 13 });
 
@@ -314,11 +322,14 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
     let outerRingLatLngs = MUMBAI_FALLBACK_LATLNGS;
 
     const updateBlur = () => {
+      if (!map) return;
       const { x: W, y: H } = map.getSize();
       const outer = `M 0 0 L ${W} 0 L ${W} ${H} L 0 ${H} Z`;
       const pts   = outerRingLatLngs.map(([lat, lng]) => {
-        const p = map.latLngToContainerPoint([lat, lng]);
-        return `${p.x} ${p.y}`;
+        try {
+          const p = map.latLngToContainerPoint([lat, lng]);
+          return `${p.x} ${p.y}`;
+        } catch(e) { return "0 0"; }
       });
       clipPathEl.setAttribute('d', `${outer} M ${pts.join(' L ')} Z`);
     };
@@ -385,6 +396,7 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
     });
 
     return () => {
+      map._pakdarePopupCleanup?.();
       map.remove();
       mapInst.current = null;
       blurDiv.remove();
@@ -449,7 +461,7 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
     if (L.heatLayer) {
       const heatL = L.heatLayer(heatData, {
         radius: 45, blur: 35, maxZoom: 15, max: 1,
-        gradient: { 0: 'rgba(26,122,110,0)', .2: 'rgba(26,122,110,.5)', .4: 'rgba(200,184,0,.7)', .6: 'rgba(224,120,32,.85)', .8: 'rgba(227,30,36,.9)', 1: '#c00' }
+        gradient: { 0: 'rgba(254,237,222,0)', 0.2: '#fdbe85', 0.4: '#fd8d3c', 0.6: '#e6550d', 0.8: '#a63603', 1: '#7f2704' }
       });
       layersRef.current.heat = heatL;
       if (activeLayers.has('heatmap')) heatL.addTo(map);
@@ -463,11 +475,26 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
       const bg = w.risk >= 80 ? 'rgba(227,30,36,.18)' : w.risk >= 60 ? 'rgba(224,120,32,.18)' : w.risk >= 40 ? 'rgba(200,184,0,.15)' : 'rgba(26,122,110,.15)';
       const r = Math.max(18, Math.min(44, 14 + cnt * 0.9));
       const sz = r * 2;
-      const pulse = w.risk >= 80 ? `<div style="position:absolute;inset:0;border-radius:50%;border:2px solid ${col};animation:ripple 2.5s ease-out infinite;pointer-events:none"></div>` : '';
+      const isCrit = w.risk >= 80;
+      const pulseHtml = isCrit ? `
+        <div class="hud-radar" style="color:${col}"></div>
+        <div class="hud-dash-ring" style="color:${col}"></div>
+        <div class="hud-crosshair" style="color:${col}"></div>
+        <div class="marker-anim-pulse"></div>
+      ` : '';
+      const iconHtml = `
+        <div class="map-marker-container">
+          <div class="map-marker-glow" style="background:${col}; opacity: ${isCrit ? 0.8 : 0.4}; filter: blur(${isCrit ? 8 : 4}px);"></div>
+          ${pulseHtml}
+          <div class="map-marker-core" style="width:${sz}px;height:${sz}px;background:${bg};border:2px solid ${col};color:${col};font-size:${r > 28 ? 14 : 12}px;">
+            ${cnt}
+          </div>
+        </div>
+      `;
 
       const icon = L.divIcon({
         className: '',
-        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${bg};border:2.5px solid ${col};display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:${r > 28 ? 13 : 11}px;font-weight:700;color:${col};box-shadow:0 3px 18px rgba(0,0,0,.28);cursor:pointer;position:relative;">${cnt}${pulse}</div>`,
+        html: iconHtml,
         iconSize: [sz, sz], iconAnchor: [r, r], popupAnchor: [0, -r - 4]
       });
 
@@ -486,7 +513,7 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
           <div class="pu-row"><span class="pu-l">Risk index</span><span class="pu-v r">${w.risk}/100</span></div>
         </div>
         <div class="pu-btns" style="display:flex;gap:6px;padding:10px 12px;background:var(--g50);">
-          <button class="pu-btn ob" style="flex:1" onclick="window.__onMapClick__('${w.id}')">📊 Open Profile</button>
+          <button class="pu-btn ob" style="flex:1" data-wid="${w.id}">📊 Open Profile</button>
         </div>`));
 
       layersRef.current.bubble.addLayer(mk);
@@ -512,10 +539,26 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
       if (!c.lat || !c.lng) return;
       if (c.lat < MUMBAI_BOUNDS[0][0] || c.lat > MUMBAI_BOUNDS[1][0] || c.lng < MUMBAI_BOUNDS[0][1] || c.lng > MUMBAI_BOUNDS[1][1]) return;
       const col = c.severity === 'critical' ? '#E31E24' : c.severity === 'severe' ? '#e07820' : c.severity === 'moderate' ? '#c8b800' : '#1a7a6e';
-      // Use divIcon with 44px touch target (WCAG 2.5.5) — visible 14px dot + invisible 44px tap area
+      // Next-level GPS pin with micro-interactions
+      const isRes = c.status === 'Resolved';
+      const animClass = isRes ? '' : (c.severity === 'critical' ? 'marker-anim-pulse' : 'marker-anim-breathe');
+      const rippleHtml = (!isRes && c.severity === 'critical') ? `
+        <div class="hud-radar" style="color:${col}"></div>
+        <div class="hud-crosshair" style="color:${col}; inset:-8px"></div>
+        <div class="marker-anim-ripple" style="color:${col}; opacity: 0.5;"></div>
+      ` : '';
+      
+      const pinHtml = `
+        <div class="map-marker-container" style="width:44px; height:44px; cursor:pointer; opacity: ${isRes ? 0.6 : 1};">
+          <div class="map-marker-glow" style="background:${col}; width:20px; height:20px; top:12px; left:12px; filter: blur(6px);"></div>
+          ${rippleHtml}
+          <div class="map-marker-core ${animClass}" style="width:16px;height:16px;background:${col};border:2px solid #fff; position:absolute; top:14px; left:14px;"></div>
+        </div>
+      `;
+
       const pinIcon = L.divIcon({
         className: '',
-        html: `<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;cursor:pointer;"><div style="width:14px;height:14px;border-radius:50%;background:${col};border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.4)"></div></div>`,
+        html: pinHtml,
         iconSize: [44, 44],
         iconAnchor: [22, 22],
       });
@@ -529,11 +572,20 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
       pin.addTo(layersRef.current.gps);
     });
 
-    window.__onMapClick__ = (wid) => {
+    // ✅ Event delegation — replaces the XSS-prone window.__onMapClick__ global.
+    // All popup "Open Profile" buttons use data-wid="W"; one listener handles all.
+    const mapContainer = mapRef.current;
+    const handlePopupClick = (e) => {
+      const btn = e.target.closest('[data-wid]');
+      if (!btn) return;
+      const wid = btn.dataset.wid;
       setSelectedWard(wid);
       const w = WARDS.find(x => x.id === wid);
-      if (w && onWardClick) onWardClick(w);
+      if (w) onWardClickRef.current?.(w);
     };
+    mapContainer.addEventListener('click', handlePopupClick);
+    // Store cleanup fn on the map instance so the return() below can access it
+    map._pakdarePopupCleanup = () => mapContainer.removeEventListener('click', handlePopupClick);
 
     setTimeout(() => map.invalidateSize(), 300);
   // wardStatsMap changes only when complaints change, so this is effectively [complaints, onWardClick]

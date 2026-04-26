@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { DEMO_COMPLAINTS } from '../data/demoData';
 import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
+import { uploadComplaintPhotos, uploadResolutionPhoto } from '../utils/photoStorage';
 import exifr from 'exifr';
 import * as turf from '@turf/turf';
 
@@ -131,14 +132,22 @@ export function useComplaints(mode) {
   }, [mode]);
 
   const addComplaint = useCallback(async (c) => {
+    // Optimistic update — add locally first for instant feedback
     setComplaints(prev => [c, ...prev]);
     if (mode === 'real' && supabase) {
-      const { error } = await supabase.from('complaints').insert(c);
+      // Upload photos to Supabase Storage (prevents base64 bloat in DB)
+      const uploadedPhotos = await uploadComplaintPhotos(c.photos || [], c.id);
+      const payload = { ...c, photos: uploadedPhotos };
+
+      const { error } = await supabase.from('complaints').insert(payload);
       if (error) {
         console.error('[PakdaRe] addComplaint error:', error);
-        alert(`Database Error: ${error.message}`);
+        // Roll back the optimistic update on DB failure
+        setComplaints(prev => prev.filter(x => x.id !== c.id));
+        return { ok: false, error: error.message };
       }
     }
+    return { ok: true };
   }, [mode]);
 
   const resolveWithPhoto = useCallback(async (id, photoDataUrl, officerName) => {
@@ -166,9 +175,13 @@ export function useComplaints(mode) {
     }
 
     const resolvedAt = new Date().toISOString();
+
+    // Upload resolution photo to Supabase Storage (not base64 in DB)
+    const storedPhotoUrl = await uploadResolutionPhoto(photoDataUrl, id);
+
     const update = {
       resolved: true, status: 'Resolved', resolvedAt,
-      resolutionPhoto: photoDataUrl,
+      resolutionPhoto: storedPhotoUrl,
       resolutionOfficer: officerName || 'Officer',
       resolutionGps: resGps,
       gpsVerified: !!(resGps && complaint.lat),

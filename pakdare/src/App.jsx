@@ -18,6 +18,7 @@ import { ToastContainer, useToast } from './components/ui/Toast';
 import { useComplaints } from './hooks/useComplaints';
 import { useSLAEngine } from './hooks/useSLAEngine';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useModalStore } from './store/useModalStore';
 
 // Lazy-load staff/admin pages — citizens never load these chunks
 const Dashboard      = lazy(() => import('./components/pages/Dashboard'));
@@ -88,8 +89,6 @@ function AppContent() {
   const location  = useLocation();
   const [loading, setLoading]   = useState(true);
   const [mode,    setMode]      = useState('real');
-  const [wardModal,      setWardModal]      = useState(null);
-  const [complaintModal, setComplaintModal] = useState(null);
   const [theme,          setTheme]          = useState(() => localStorage.getItem('pakdare-theme') || 'dark');
   const [announcement,   setAnnouncement]   = useState(() => localStorage.getItem('pakdare-ann') || '');
 
@@ -101,6 +100,13 @@ function AppContent() {
   } = useComplaints(mode);
 
   const { user, loading: authLoading } = useAuth();
+
+  // ── Modal state lives in Zustand — no re-render of full app shell ──
+  const {
+    wardModal, complaintModal,
+    openWardModal, closeWardModal,
+    openComplaintModal, closeComplaintModal, patchComplaintModal,
+  } = useModalStore();
 
   // Persist & apply theme
   useEffect(() => {
@@ -127,10 +133,10 @@ function AppContent() {
   const unresolvedCount = useMemo(() => complaints.filter(c => !c.resolved).length, [complaints]);
 
   const handleComplaintDetail = useCallback(async (c) => {
-    setComplaintModal(c);
+    openComplaintModal(c);
     const full = await fetchComplaintDetail(c.id);
-    if (full) setComplaintModal(full);
-  }, [fetchComplaintDetail]);
+    if (full) openComplaintModal(full);
+  }, [fetchComplaintDetail, openComplaintModal]);
 
   if (loading) return <LoadingScreen onEnter={() => setLoading(false)} />;
 
@@ -200,7 +206,7 @@ function AppContent() {
                     )}
                     <MapPage
                       complaints={complaints}
-                      onWardClick={setWardModal}
+                      onWardClick={openWardModal}
                       fetchComplaintDetail={fetchComplaintDetail}
                       onOpenReport={() => navigate('/report')}
                     />
@@ -211,8 +217,12 @@ function AppContent() {
               <Route path="/report" element={
                 <ErrorBoundary>
                   <FileReport
-                    onSubmit={(c) => {
-                      addComplaint(c);
+                    onSubmit={async (c) => {
+                      const result = await addComplaint(c);
+                      if (result?.ok === false) {
+                        showToast(`🚫 Failed to save report: ${result.error}`, 'error');
+                        return;
+                      }
                       showToast(`✅ Report ${c.id} submitted & routed!`, 'success');
                       navigate(`/track/${c.id}`, { state: { justFiled: true } });
                     }}
@@ -260,7 +270,7 @@ function AppContent() {
                       <Dashboard
                         complaints={complaints}
                         navigate={navigate}
-                        onWardClick={setWardModal}
+                        onWardClick={openWardModal}
                         seedDemo={seedDemo}
                         clearDemo={clearDemo}
                       />
@@ -288,7 +298,7 @@ function AppContent() {
                 <StaffGuard>
                   <ErrorBoundary>
                     <Suspense fallback={<PageSkeleton />}>
-                      <Summary complaints={complaints} onWardClick={setWardModal} />
+                      <Summary complaints={complaints} onWardClick={openWardModal} />
                     </Suspense>
                   </ErrorBoundary>
                 </StaffGuard>
@@ -344,8 +354,8 @@ function AppContent() {
         <WardModal
           ward={wardModal}
           complaints={complaints}
-          onClose={() => setWardModal(null)}
-          onViewComplaints={() => { navigate('/complaints'); setWardModal(null); }}
+          onClose={closeWardModal}
+          onViewComplaints={() => { navigate('/complaints'); closeWardModal(); }}
         />
       )}
 
@@ -353,14 +363,12 @@ function AppContent() {
       {complaintModal && (
         <ComplaintModal
           complaint={complaintModal}
-          onClose={() => setComplaintModal(null)}
+          onClose={closeComplaintModal}
           onResolveWithPhoto={async (id, photo, officer) => {
             const result = await resolveWithPhoto(id, photo, officer);
             if (result.ok) {
               showToast('✅ Complaint resolved with GPS verification!', 'success');
-              setComplaintModal(prev => prev
-                ? { ...prev, resolved: true, status: 'Resolved', resolutionPhoto: photo, gpsVerified: true }
-                : null);
+              patchComplaintModal({ resolved: true, status: 'Resolved', resolutionPhoto: photo, gpsVerified: true });
             } else {
               showToast(`🚫 ${result.error}`, 'error');
             }

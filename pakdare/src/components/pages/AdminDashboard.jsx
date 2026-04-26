@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '../../supabase';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
@@ -94,13 +94,26 @@ function buildStaffData(complaints) {
   const map = {};
   complaints.forEach(c => {
     const name = c.assignedTo || 'Unassigned';
-    if (!map[name]) map[name] = { name, ward: c.ward, assigned: 0, resolved: 0, breached: 0 };
+    if (!map[name]) map[name] = { name, ward: c.ward, assigned: 0, resolved: 0, breached: 0, totalResMs: 0, totalRating: 0, ratedCount: 0 };
     map[name].assigned++;
-    if (c.resolved) map[name].resolved++;
+    if (c.resolved) {
+      map[name].resolved++;
+      const start = new Date(c.time).getTime();
+      const end = new Date(c.resolvedAt || c.time).getTime();
+      map[name].totalResMs += (end - start);
+      if (c.feedback && c.feedback.rating) {
+        map[name].totalRating += c.feedback.rating;
+        map[name].ratedCount++;
+      }
+    }
     if (getSLAInfo(c).breached) map[name].breached++;
   });
   return Object.values(map)
-    .map(s => ({ ...s, score: s.assigned ? Math.round((s.resolved / s.assigned) * 100) : 0 }))
+    .map(s => {
+      const avgResHrs = s.resolved ? (s.totalResMs / s.resolved / 3600000).toFixed(1) : 0;
+      const avgRating = s.ratedCount ? (s.totalRating / s.ratedCount).toFixed(1) : '-';
+      return { ...s, score: s.assigned ? Math.round((s.resolved / s.assigned) * 100) : 0, avgResHrs, avgRating };
+    })
     .sort((a, b) => b.score - a.score);
 }
 
@@ -129,6 +142,10 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
   const [newStaff, setNewStaff] = useState({ name: '', email: '', password: '', role: 'officer', ward: '', designation: '' });
   const [provisioning, setProvisioning] = useState(false);
   const [profiles, setProfiles] = useState([]);
+  const [staffMsg, setStaffMsg] = useState(null); // { type: 'ok'|'err', text: string }
+
+  // Defer filtering so the UI stays responsive while the user types
+  const deferredFilters = useDeferredValue({ ward, category, severity, status, fromDate, toDate });
 
   useEffect(() => {
     async function loadProfiles() {
@@ -139,16 +156,17 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
   }, []);
 
   const filtered = useMemo(() => complaints.filter(c => {
-    if (ward && c.ward !== ward) return false;
-    if (category && c.category !== category) return false;
-    if (severity && c.severity !== severity) return false;
-    if (status === 'resolved' && !c.resolved) return false;
-    if (status === 'open' && c.resolved) return false;
-    if (status === 'breached' && !getSLAInfo(c).breached) return false;
-    if (fromDate && new Date(c.time) < new Date(fromDate)) return false;
-    if (toDate && new Date(c.time) > new Date(toDate + 'T23:59:59')) return false;
+    const f = deferredFilters;
+    if (f.ward && c.ward !== f.ward) return false;
+    if (f.category && c.category !== f.category) return false;
+    if (f.severity && c.severity !== f.severity) return false;
+    if (f.status === 'resolved' && !c.resolved) return false;
+    if (f.status === 'open' && c.resolved) return false;
+    if (f.status === 'breached' && !getSLAInfo(c).breached) return false;
+    if (f.fromDate && new Date(c.time) < new Date(f.fromDate)) return false;
+    if (f.toDate && new Date(c.time) > new Date(f.toDate + 'T23:59:59')) return false;
     return true;
-  }), [complaints, ward, category, severity, status, fromDate, toDate]);
+  }), [complaints, deferredFilters]);
 
   // Single pass to compute all KPIs and chart data from filtered list
   const stats = useMemo(() => {
@@ -384,7 +402,7 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
                 </tr>
               </thead>
               <tbody>
-                {filteredAudit.map((e, i) => (
+                {filteredAudit.slice(0, 500).map((e, i) => (
                   <tr key={e.id} className={i % 2 === 0 ? '' : 'adm-tr-alt'}>
                     <td className="adm-td-muted" style={{ whiteSpace: 'nowrap' }}>{timeAgo(e.time)}</td>
                     <td>
@@ -403,6 +421,38 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
         </div>
       )}
 
+      {/* ── STAFF PERFORMANCE ── */}
+      {tab === 'staff' && (
+        <div className="adm-table-wrap">
+          <table className="dtbl adm-dtbl">
+            <thead>
+              <tr>
+                {['Officer / Team', 'Ward', 'Assigned', 'Resolved', 'Avg Resolution Time', 'Avg Citizen Rating', 'SLA Breaches'].map(h => <th key={h}>{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {staffData.map((s, i) => (
+                <tr key={s.name} className={i % 2 === 0 ? '' : 'adm-tr-alt'}>
+                  <td className="adm-td-bold">{s.name}</td>
+                  <td className="adm-td-sec">{s.ward || '—'}</td>
+                  <td>{s.assigned}</td>
+                  <td><span className="status-badge sb-low">{s.resolved}</span></td>
+                  <td className="adm-td-bold" style={{ color: s.avgResHrs > 24 ? 'var(--orange)' : 'var(--green)' }}>
+                    {s.avgResHrs > 0 ? `${s.avgResHrs} hrs` : '—'}
+                  </td>
+                  <td style={{ fontSize: 16 }}>
+                    {s.avgRating !== '-' ? `⭐ ${s.avgRating}` : <span className="adm-td-muted">No reviews</span>}
+                  </td>
+                  <td style={{ color: s.breached > 0 ? 'var(--red)' : 'inherit' }}>
+                    {s.breached > 0 ? `🚨 ${s.breached}` : '0'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ── MANAGE STAFF ── */}
       {tab === 'manage_staff' && (
         <div style={{ display: 'flex', gap: 24, flexDirection: 'column' }}>
@@ -411,6 +461,7 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
             <form className="adm-staff-form" onSubmit={async (e) => {
               e.preventDefault();
               setProvisioning(true);
+              setStaffMsg(null);
               try {
                 // 1. Create the Auth User with Password
                 const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -439,11 +490,11 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
                 });
                 
                 if (profError) throw profError;
-                
-                alert(`✅ Account created for ${newStaff.name}! \nNote: You may need to log back in as Admin now, as Supabase signs in the new user automatically.`);
+
+                setStaffMsg({ type: 'ok', text: `✅ Account created for ${newStaff.name}. Note: Supabase may sign in as the new user — log back in as Admin if needed.` });
                 setNewStaff({ name: '', email: '', password: '', role: 'officer', ward: '', designation: '' });
               } catch (err) {
-                alert(`🚫 Registration failed: ${err.message}`);
+                setStaffMsg({ type: 'err', text: `🚫 Registration failed: ${err.message}` });
               } finally {
                 setProvisioning(false);
               }
@@ -459,7 +510,7 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
                 </div>
                 <div className="fg">
                   <label className="flbl">Initial Password</label>
-                  <input className="fi" type="text" required value={newStaff.password} onChange={e => setNewStaff({...newStaff, password: e.target.value})} placeholder="Set password here" />
+                  <input className="fi" type="password" required value={newStaff.password} onChange={e => setNewStaff({...newStaff, password: e.target.value})} placeholder="Set a strong password" />
                 </div>
                 <div className="fg">
                   <label className="flbl">Designation</label>
@@ -483,6 +534,17 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
               <button type="submit" className="bp" style={{ marginTop: 20, width: '100%', padding: 14 }} disabled={provisioning}>
                 {provisioning ? 'Processing…' : '🚀 Create Account & Send Invite'}
               </button>
+              {staffMsg && (
+                <div style={{
+                  marginTop: 14, padding: '12px 16px', borderRadius: 'var(--r12)', fontSize: 13,
+                  background: staffMsg.type === 'ok' ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.10)',
+                  border: `1px solid ${staffMsg.type === 'ok' ? 'rgba(16,185,129,0.30)' : 'rgba(239,68,68,0.30)'}`,
+                  color: staffMsg.type === 'ok' ? 'var(--green2)' : 'var(--red2)',
+                  lineHeight: 1.5
+                }}>
+                  {staffMsg.text}
+                </div>
+              )}
             </form>
           </div>
 
@@ -505,11 +567,9 @@ export default function AdminDashboard({ complaints, announcement, setAnnounceme
                       <td><span className="status-badge sb-low">Active</span></td>
                       <td>
                         <button className="adm-pdf-btn" onClick={async () => {
-                          const email = prompt(`Confirm official email to send reset link to:`);
-                          if (email) {
-                            await supabase.auth.resetPasswordForEmail(email);
-                            alert(`Reset link sent to ${email}`);
-                          }
+                          if (!s.email) { setStaffMsg({ type: 'err', text: 'No email on file for this staff member.' }); return; }
+                          await supabase.auth.resetPasswordForEmail(s.email);
+                          setStaffMsg({ type: 'ok', text: `🔑 Password reset link sent to ${s.email}` });
                         }}>🔑 Reset Password</button>
                       </td>
                     </tr>

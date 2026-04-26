@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import { useAuth } from '../context/AuthContext';
 import { WARDS } from '../data/wardData';
@@ -12,6 +13,7 @@ const LANG_LABEL  = { en: 'EN', mr: 'मराठी', hi: 'हिंदी' };
 const LANG_FLAG   = { en: '🌐', mr: '🟠', hi: '🇮🇳' };
 
 export default function Header({ complaints, dbStatus, theme, setTheme, onLogoClick }) {
+  const { t } = useTranslation();
   const { user, signOut } = useAuth();
   const [logoErr, setLogoErr] = useState(false);
 
@@ -62,13 +64,13 @@ export default function Header({ complaints, dbStatus, theme, setTheme, onLogoCl
           {critical > 0 && (
             <div className="hs hd hs-pulse">
               <div className="v">{critical}</div>
-              <div className="l">Critical</div>
+              <div className="l">{t('critical')}</div>
             </div>
           )}
-          <div className="hs hd"><div className="v">{active}</div><div className="l">Active</div></div>
-          <div className="hs hw"><div className="v">{pending}</div><div className="l">Pending</div></div>
-          <div className="hs hs2"><div className="v">{resolved}</div><div className="l">Resolved</div></div>
-          <div className="hs hi"><div className="v">{WARDS.length}</div><div className="l">Wards</div></div>
+          <div className="hs hd"><div className="v">{active}</div><div className="l">{t('active')}</div></div>
+          <div className="hs hw"><div className="v">{pending}</div><div className="l">{t('pending')}</div></div>
+          <div className="hs hs2"><div className="v">{resolved}</div><div className="l">{t('resolved')}</div></div>
+          <div className="hs hi"><div className="v">{WARDS.length}</div><div className="l">{t('nav_wards')}</div></div>
         </div>
 
         {/* ── Controls ──────────────────────────────── */}

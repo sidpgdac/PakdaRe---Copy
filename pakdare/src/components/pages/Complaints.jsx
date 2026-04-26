@@ -1,4 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useDeferredValue, useRef } from 'react';
+import ComplaintTimer from '../ui/ComplaintTimer';
+import FeedbackUI from '../ui/FeedbackUI';
+
 import { WARDS } from '../../data/wardData';
 import { SEV_PILL } from '../../utils/constants';
 
@@ -72,14 +75,30 @@ function ComplaintCard({ c, onDetail }) {
         </div>
       )}
 
+      {/* Live SLA Timer */}
+      <ComplaintTimer complaint={c} />
+
+      {/* Post-Resolution Feedback */}
+      {c.resolved && (
+        <FeedbackUI 
+          complaint={c} 
+          onSubmitFeedback={(fb) => console.log('Feedback submitted:', c.id, fb)} 
+        />
+      )}
+
       {/* Actions */}
-      <div className="cit-act">
-        <button className="btn-v" onClick={() => onDetail(c)}>🔍 View Details</button>
-        <button className="btn-nr">🚨 Dispute</button>
-        {c.status !== 'Resolved' && (
+      {!c.resolved && (
+        <div className="cit-act" style={{ marginTop: 12 }}>
+          <button className="btn-v" onClick={() => onDetail(c)}>🔍 View Details</button>
+          <button className="btn-nr">🚨 Dispute</button>
           <button className="btn-es">⬆️ Escalate</button>
-        )}
-      </div>
+        </div>
+      )}
+      {c.resolved && (
+         <div className="cit-act" style={{ marginTop: 12 }}>
+           <button className="btn-v" onClick={() => onDetail(c)}>🔍 View Details</button>
+         </div>
+      )}
     </div>
   );
 }
@@ -127,18 +146,24 @@ export default function Complaints({ complaints, onDetail, onAlertBranch }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sort, setSort]     = useState('newest');
+  const listRef = useRef(null);
+
+  // Defer re-filtering while user types — keeps keyboard input snappy
+  const deferredSearch = useDeferredValue(search);
+  const deferredFilter = useDeferredValue(filter);
+  const deferredSort   = useDeferredValue(sort);
 
   const filtered = useMemo(() => {
     let list = [...complaints];
-    const q = search.toLowerCase();
+    const q = deferredSearch.toLowerCase();
 
-    if (filter === 'critical')   list = list.filter(c => c.severity === 'critical');
-    if (filter === 'severe')     list = list.filter(c => c.severity === 'severe');
-    if (filter === 'vector')     list = list.filter(c => c.category?.includes('breeding') || c.category?.includes('mosquito') || c.category?.includes('dengue') || c.category?.includes('malaria'));
-    if (filter === 'water')      list = list.filter(c => c.category?.includes('water') || c.category?.includes('sewer'));
-    if (filter === 'unresolved') list = list.filter(c => !c.resolved);
-    if (filter === 'resolved')   list = list.filter(c => c.resolved);
-    if (filter === 'real')       list = list.filter(c => !c.isDemo);
+    if (deferredFilter === 'critical')   list = list.filter(c => c.severity === 'critical');
+    if (deferredFilter === 'severe')     list = list.filter(c => c.severity === 'severe');
+    if (deferredFilter === 'vector')     list = list.filter(c => c.category?.includes('breeding') || c.category?.includes('mosquito') || c.category?.includes('dengue') || c.category?.includes('malaria'));
+    if (deferredFilter === 'water')      list = list.filter(c => c.category?.includes('water') || c.category?.includes('sewer'));
+    if (deferredFilter === 'unresolved') list = list.filter(c => !c.resolved);
+    if (deferredFilter === 'resolved')   list = list.filter(c => c.resolved);
+    if (deferredFilter === 'real')       list = list.filter(c => !c.isDemo);
 
     if (q) list = list.filter(c =>
       c.id?.toLowerCase().includes(q) ||
@@ -147,12 +172,12 @@ export default function Complaints({ complaints, onDetail, onAlertBranch }) {
       c.desc?.toLowerCase().includes(q)
     );
 
-    if (sort === 'oldest')        list.sort((a, b) => new Date(a.time) - new Date(b.time));
-    else if (sort === 'severity') list.sort((a, b) => ['critical','severe','moderate','minor'].indexOf(a.severity) - ['critical','severe','moderate','minor'].indexOf(b.severity));
-    else                          list.sort((a, b) => new Date(b.time) - new Date(a.time));
+    if (deferredSort === 'oldest')        list.sort((a, b) => new Date(a.time) - new Date(b.time));
+    else if (deferredSort === 'severity') list.sort((a, b) => ['critical','severe','moderate','minor'].indexOf(a.severity) - ['critical','severe','moderate','minor'].indexOf(b.severity));
+    else                                  list.sort((a, b) => new Date(b.time) - new Date(a.time));
 
     return list;
-  }, [complaints, filter, search, sort]);
+  }, [complaints, deferredFilter, deferredSearch, deferredSort]);
 
   // Single O(N) pass → grouped by ward; replaces O(N×26) per render
   const byWard = useMemo(() => {
@@ -244,17 +269,11 @@ export default function Complaints({ complaints, onDetail, onAlertBranch }) {
             ))}
           </div>
 
-          {/* Mobile: flat list with sticky section headers */}
+          {/* Mobile: flat list (non-virtualized fallback for stability) */}
           <div className="comp-flat">
-            {byWard.map(g => (
-              <div key={g.ward.id} className="flat-group">
-                <div className="flat-section-hdr">
-                  <span className="flat-section-name">📍 {g.ward.name}</span>
-                  <span className="flat-section-count">{g.complaints.length}</span>
-                </div>
-                {g.complaints.map(c => (
-                  <ComplaintCard key={c.id} c={c} onDetail={onDetail} />
-                ))}
+            {filtered.map(c => (
+              <div key={c.id} style={{ paddingBottom: 8 }}>
+                <ComplaintCard c={c} onDetail={onDetail} />
               </div>
             ))}
           </div>

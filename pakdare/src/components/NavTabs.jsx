@@ -47,7 +47,11 @@ export default function NavTabs({ active, navigate, complaintCount, breachCount 
       ? OFFICER_TABS
       : STAFF_TABS;
 
-  const audienceLabel = !user ? '👤 Public' : role === 'officer' ? '👷 Officer' : '🔒 Staff';
+  const audienceLabel = !user 
+    ? `👤 ${t('role_public')}` 
+    : role === 'officer' 
+      ? `👷 ${t('role_officer')}` 
+      : `🔒 ${t('role_staff')}`;
 
   const activeId = active?.replace('/', '') || 'map';
 
@@ -79,7 +83,7 @@ export default function NavTabs({ active, navigate, complaintCount, breachCount 
               aria-current={isActive(tab) ? 'page' : undefined}
             >
               <span className="ntab-i" aria-hidden="true">{tab.icon}</span>
-              <span className="ntab-l">{tab.label}</span>
+              <span className="ntab-l">{t('nav_' + tab.id.replace('-','_'))}</span>
 
               {tab.badge && complaintCount > 0 && (
                 <span className="ntab-badge">{complaintCount > 99 ? '99+' : complaintCount}</span>
@@ -137,7 +141,7 @@ export default function NavTabs({ active, navigate, complaintCount, breachCount 
                       onClick={() => go(tab.path)}
                     >
                       <span className="mob-more-ico" aria-hidden="true">{tab.icon}</span>
-                      <span className="mob-more-lbl">{tab.short}</span>
+                      <span className="mob-more-lbl">{t('nav_' + tab.id.replace('-','_'))}</span>
                     </button>
                   ))}
                 </div>
@@ -159,7 +163,7 @@ export default function NavTabs({ active, navigate, complaintCount, breachCount 
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }} />
               )}
               <span className="mob-tab-ico" aria-hidden="true">{tab.icon}</span>
-              <span className="mob-tab-lbl">{tab.short}</span>
+              <span className="mob-tab-lbl">{t('nav_' + tab.id.replace('-','_'))}</span>
               {tab.badge && complaintCount > 0 && (
                 <span className="mob-tab-badge">{complaintCount > 99 ? '99+' : complaintCount}</span>
               )}
@@ -187,7 +191,7 @@ export default function NavTabs({ active, navigate, complaintCount, breachCount 
               <span className="mob-tab-ico" aria-hidden="true" style={{ fontSize: 18, letterSpacing: 1 }}>
                 {showMore ? '✕' : '•••'}
               </span>
-              <span className="mob-tab-lbl">{showMore ? 'Close' : 'More'}</span>
+              <span className="mob-tab-lbl">{showMore ? t('nav_close') : t('nav_more')}</span>
               {activeInMore && !showMore && <span className="mob-more-active-dot" />}
             </button>
           )}

@@ -1,0 +1,54 @@
+/* ==========================================================================
+   MOBILE UX & ACCESSIBILITY FIXES
+   Applied as part of the Production Audit Redesign
+   ========================================================================== */
+
+/* 1. Header Density on Mobile (< 640px)
+   Hide the KPI stats strip to save space and reduce clutter.
+   These stats are already visible on the Dashboard. */
+@media (max-width: 640px) {
+  .hdr-stats {
+    display: none !important;
+  }
+  
+  /* Ensure the logo has enough space */
+  .logo-name {
+    font-size: 16px !important;
+  }
+  .logo-sub {
+    font-size: 9px !important;
+  }
+}
+
+/* 2. NavTabs Touch Targets (WCAG 2.5.5)
+   Ensure the "More" drawer items have a minimum height of 44px
+   (preferably 64px for primary actions) */
+.mob-more-item {
+  min-height: 64px !important;
+  padding: 12px !important;
+}
+
+/* 3. Map GPS Pin Tap Animation
+   Visual feedback when a user taps the 14px dot. */
+.leaflet-marker-icon > div > div {
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease;
+}
+
+.leaflet-marker-icon > div:active > div {
+  transform: scale(1.5) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+}
+
+/* 4. Category / Form Card touch targets in FileReport 
+   Ensuring buttons and inputs meet WCAG sizing rules. */
+@media (max-width: 640px) {
+  .cat-card {
+    min-height: 64px !important;
+  }
+  .sev-big {
+    min-height: 56px !important;
+  }
+  .wiz-nav .bp, .wiz-nav .bs {
+    min-height: 54px !important; /* Thumb-friendly wizard buttons */
+  }
+}

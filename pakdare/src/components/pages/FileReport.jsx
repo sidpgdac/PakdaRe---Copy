@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
 import imageCompression from 'browser-image-compression';
@@ -61,10 +62,10 @@ const CATEGORY_GROUPS = [
 const ALL_CATEGORIES = CATEGORY_GROUPS.flatMap(g => g.categories);
 
 const SEV_OPTS = [
-  { key: 'minor',    emoji: '🟢', label: 'Minor',    desc: 'Low risk',     color: 'var(--green)' },
-  { key: 'moderate', emoji: '🟡', label: 'Moderate', desc: 'Needs action', color: 'var(--yellow)' },
-  { key: 'severe',   emoji: '🟠', label: 'Severe',   desc: 'Urgent',       color: 'var(--orange)' },
-  { key: 'critical', emoji: '🔴', label: 'Critical', desc: 'Emergency!',   color: 'var(--red)' },
+  { key: 'minor',    emoji: '🟢', label: 'Minor',    desc: 'General upkeep (e.g. Garbage, cleaning)', sla: '48h', color: 'var(--green)' },
+  { key: 'moderate', emoji: '🟡', label: 'Moderate', desc: 'Active nuisance (e.g. Pests, leakages)', sla: '24h', color: 'var(--yellow)' },
+  { key: 'severe',   emoji: '🟠', label: 'Severe',   desc: 'Visible breeding in stagnant water', sla: '12h', color: 'var(--orange)' },
+  { key: 'critical', emoji: '🔴', label: 'Critical', desc: 'Medical Emergency (e.g. Fever cluster)', sla: '4h',  color: 'var(--red)' },
 ];
 
 const STEPS = ['What?', 'Where?', 'Details', 'Review'];
@@ -102,6 +103,7 @@ function findNearby(complaints, lat, lng, category) {
 }
 
 export default function FileReport({ onSubmit, showToast, isModal, complaints = [] }) {
+  const { t } = useTranslation();
   const locationState = useLocation().state;
   const asOfficer     = !!locationState?.asOfficer;
   const { user, staffProfile } = useAuth();
@@ -470,19 +472,27 @@ export default function FileReport({ onSubmit, showToast, isModal, complaints = 
                     </div>
                   ))}
 
-                  <div className="wiz-step-title" style={{ marginTop: 20 }}>How serious?</div>
+                  <div className="wiz-step-title" style={{ marginTop: 20 }}>{t('how_serious')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, marginTop: -8 }}>
+                    {t('sev_hint')}
+                  </div>
                   <div className="sev-big-grid">
                     {SEV_OPTS.map(o => (
                       <button
                         key={o.key}
                         className={`sev-big${sev === o.key ? ' active' : ''}`}
-                        style={sev === o.key ? { borderColor: o.color, background: `${o.color}18` } : {}}
+                        style={sev === o.key ? { borderColor: o.color, background: `${o.color}12` } : {}}
                         onClick={() => { haptic.light(); setSev(o.key); }}
                       >
-                        <span className="sev-big-ico">{o.emoji}</span>
-                        <div>
-                          <div className="sev-big-lbl">{o.label}</div>
-                          <div className="sev-big-desc">{o.desc}</div>
+                        <div className="sev-big-ico">{o.emoji}</div>
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span className="sev-big-lbl">{t(o.key)}</span>
+                            <span style={{ fontSize: 10, fontWeight: 800, opacity: 0.7, background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: 4 }}>
+                              {t('sla_label')}: {o.sla}
+                            </span>
+                          </div>
+                          <div className="sev-big-desc" style={{ fontSize: 11, marginTop: 2, lineHeight: 1.3 }}>{t(`sev_${o.key}_desc`)}</div>
                         </div>
                         {sev === o.key && <span className="sev-big-check" style={{ color: o.color }}>✓</span>}
                       </button>
