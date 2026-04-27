@@ -23,11 +23,12 @@
     <!-- Content Security Policy — blocks XSS inline scripts -->
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self';
-      script-src 'self' 'unsafe-inline';
+      script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
+      worker-src 'self' blob:;
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
       font-src 'self' https://fonts.gstatic.com;
       img-src 'self' data: blob: https://*.supabase.co https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://mt0.google.com https://server.arcgisonline.com https://portal.mcgm.gov.in https://images.unsplash.com;
-      connect-src 'self' https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://overpass-api.de;
+      connect-src 'self' http://localhost:5000 https://*.supabase.co wss://*.supabase.co https://nominatim.openstreetmap.org https://overpass-api.de;
     " />
     <title>BMC Public Health Portal — Mumbai Disease Surveillance</title>
   </head>

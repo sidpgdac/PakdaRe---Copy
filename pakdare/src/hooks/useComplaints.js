@@ -5,25 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { uploadComplaintPhotos, uploadResolutionPhoto } from '../utils/photoStorage';
 import exifr from 'exifr';
 import * as turf from '@turf/turf';
-
-// Wraps a Supabase query promise with a hard timeout.
-// Returns { data, error } in all cases — never throws.
-async function runQuery(queryFn, timeoutMs = 15000) {
-  try {
-    const result = await Promise.race([
-      queryFn(),
-      new Promise(resolve =>
-        setTimeout(
-          () => resolve({ data: null, error: { message: `Request timed out after ${timeoutMs / 1000}s. Check your Supabase project is not paused.` } }),
-          timeoutMs
-        )
-      ),
-    ]);
-    return result;
-  } catch (e) {
-    return { data: null, error: { message: e.message || String(e) } };
-  }
-}
+import api from '../api/axios';
 
 const PAGE_SIZE = 50;
 
@@ -31,7 +13,7 @@ export function useComplaints(mode) {
   const { user } = useAuth();
   const [complaints, setComplaints] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(null); // null | string
+  const [fetchError, setFetchError] = useState(null); 
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
@@ -47,21 +29,14 @@ export function useComplaints(mode) {
     setLoading(true);
     setFetchError(null);
 
-    if (mode === 'real' && supabase) {
-      const LIST_COLS = 'id,ward,location,lat,lng,category,severity,desc,status,assignedTo,time,resolved,isDemo,escalations,hierarchy,photos,resolvedAt,resolutionOfficer,resolutionGps,gpsVerified';
-      const from = pageNum * PAGE_SIZE;
-      const to   = from + PAGE_SIZE - 1;
-      const { data, error } = await runQuery(() =>
-        supabase
-          .from('complaints')
-          .select(LIST_COLS)
-          .order('time', { ascending: false })
-          .range(from, to)
-      );
+    if (mode === 'real') {
+      try {
+        const offset = pageNum * PAGE_SIZE;
+        const res = await api.get(`/complaints?offset=${offset}&limit=${PAGE_SIZE}`);
+        const data = res.data.data;
 
-      if (!isMountedRef.current) return;
+        if (!isMountedRef.current) return;
 
-      if (!error && data) {
         setIsDemoMode(false);
         setHasMore(data.length === PAGE_SIZE);
         setPage(pageNum);
@@ -73,9 +48,9 @@ export function useComplaints(mode) {
         } else {
           setComplaints(data);
         }
-      } else {
-        const msg = error?.message ?? 'Unknown error — check browser console for details.';
-        console.error('[PakdaRe] Supabase fetch failed:', msg, error);
+      } catch (error) {
+        const msg = error.response?.data?.message || error.message;
+        console.error('[PakdaRe] Backend fetch failed:', msg);
         setFetchError(msg);
         setIsDemoMode(true);
         setComplaints(DEMO_COMPLAINTS);
@@ -96,53 +71,25 @@ export function useComplaints(mode) {
     fetchComplaints(page + 1, true);
   }, [hasMore, loading, page, fetchComplaints]);
 
-  // Fetch on mount and when auth / mode changes
   useEffect(() => {
     fetchComplaints(0, false);
   }, [fetchComplaints, user?.id]);
 
-  // Real-time subscription
-  useEffect(() => {
-    if (mode !== 'real' || !supabase) return;
-
-    const channel = supabase
-      .channel('realtime-complaints')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'complaints' },
-        (payload) => {
-          if (!isMountedRef.current) return;
-          if (payload.eventType === 'INSERT') {
-            setComplaints(prev => {
-              const exists = prev.some(x => x.id === payload.new.id);
-              return exists ? prev : [payload.new, ...prev];
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            setComplaints(prev =>
-              prev.map(c => (c.id === payload.new.id ? payload.new : c))
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setComplaints(prev => prev.filter(c => c.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [mode]);
+  // Real-time is currently disabled as we migrated off Supabase DB.
+  // Next phase: Implement Socket.io for Node.js real-time updates.
+  useEffect(() => {}, []);
 
   const addComplaint = useCallback(async (c) => {
-    // Optimistic update — add locally first for instant feedback
     setComplaints(prev => [c, ...prev]);
-    if (mode === 'real' && supabase) {
-      // Upload photos to Supabase Storage (prevents base64 bloat in DB)
+    if (mode === 'real') {
+      // Still using Supabase Storage for photos to avoid DB bloat!
       const uploadedPhotos = await uploadComplaintPhotos(c.photos || [], c.id);
       const payload = { ...c, photos: uploadedPhotos };
 
-      const { error } = await supabase.from('complaints').insert(payload);
-      if (error) {
+      try {
+        await api.post('/complaints', payload);
+      } catch (error) {
         console.error('[PakdaRe] addComplaint error:', error);
-        // Roll back the optimistic update on DB failure
         setComplaints(prev => prev.filter(x => x.id !== c.id));
         return { ok: false, error: error.message };
       }
@@ -188,8 +135,12 @@ export function useComplaints(mode) {
     };
 
     setComplaints(prev => prev.map(c => c.id === id ? { ...c, ...update } : c));
-    if (mode === 'real' && supabase) {
-      await supabase.from('complaints').update(update).eq('id', id);
+    if (mode === 'real') {
+      try {
+        await api.put(`/complaints/${id}`, update);
+      } catch (error) {
+        console.error('Update failed', error);
+      }
     }
     return { ok: true };
   }, [complaints, mode]);
@@ -198,8 +149,12 @@ export function useComplaints(mode) {
     setComplaints(prev =>
       prev.map(c => c.id === id ? { ...c, resolved: true, status: 'Resolved' } : c)
     );
-    if (mode === 'real' && supabase) {
-      await supabase.from('complaints').update({ resolved: true, status: 'Resolved' }).eq('id', id);
+    if (mode === 'real') {
+      try {
+        await api.put(`/complaints/${id}`, { resolved: true, status: 'Resolved' });
+      } catch (error) {
+        console.error('Resolve failed', error);
+      }
     }
   }, [mode]);
 
@@ -208,12 +163,13 @@ export function useComplaints(mode) {
   }, []);
 
   const seedDemo = useCallback(async () => {
-    if (mode === 'real' && supabase) {
-      const { data } = await supabase.from('complaints').select('id');
-      const existingIds = new Set((data || []).map(d => d.id));
-      const newItems = DEMO_COMPLAINTS.filter(c => !existingIds.has(c.id));
-      if (newItems.length > 0) await supabase.from('complaints').insert(newItems);
-      fetchComplaints();
+    if (mode === 'real') {
+      try {
+        await api.post('/complaints/seed', DEMO_COMPLAINTS);
+        fetchComplaints();
+      } catch (error) {
+        console.error('Seed failed', error);
+      }
     } else {
       setComplaints(DEMO_COMPLAINTS);
     }
@@ -225,11 +181,15 @@ export function useComplaints(mode) {
   }, [mode]);
 
   const fetchComplaintDetail = useCallback(async (id) => {
-    if (mode !== 'real' || !supabase) {
+    if (mode !== 'real') {
       return DEMO_COMPLAINTS.find(c => c.id === id) || complaints.find(c => c.id === id) || null;
     }
-    const { data } = await supabase.from('complaints').select('*').eq('id', id).single();
-    return data || complaints.find(c => c.id === id) || null;
+    try {
+      const res = await api.get(`/complaints/${id}`);
+      return res.data.data || complaints.find(c => c.id === id) || null;
+    } catch (error) {
+      return complaints.find(c => c.id === id) || null;
+    }
   }, [mode, complaints]);
 
   return {

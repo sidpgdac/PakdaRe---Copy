@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../../supabase';
+import { useAuth } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
 
 export default function StaffLogin({ showToast, onSuccess }) {
+  const { login } = useAuth();
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
   const [loading,  setLoading]  = useState(false);
@@ -16,8 +18,8 @@ export default function StaffLogin({ showToast, onSuccess }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      const { error } = await login(email, password);
+      if (error) throw new Error(error);
       
       showToast(`✅ Welcome back, ${role === 'admin' ? 'Administrator' : 'Officer'}!`, 'success');
       

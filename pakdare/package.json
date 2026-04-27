@@ -13,6 +13,7 @@
     "@sentry/react": "^10.50.0",
     "@supabase/supabase-js": "^2.104.0",
     "@turf/turf": "^7.3.5",
+    "axios": "^1.15.2",
     "browser-image-compression": "^2.0.2",
     "canvas-confetti": "^1.9.4",
     "chart.js": "^4.5.1",
