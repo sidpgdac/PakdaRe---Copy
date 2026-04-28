@@ -28,6 +28,6 @@ router.post('/seed', protect, authorize('admin'), seedComplaints);
 
 router.route('/:id')
   .get(getComplaint)
-  .put(upload.single('resolutionPhoto'), updateComplaint); 
+  .put(protect, upload.single('resolutionPhoto'), updateComplaint);  // auth required to update
 
 module.exports = router;

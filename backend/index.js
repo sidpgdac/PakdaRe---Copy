@@ -93,8 +93,24 @@ const startServer = async () => {
     app.use('/api/auth', authLimiter, authRoutes);
     app.use('/api/complaints', complaintRoutes);
 
-    app.use('/', (req, res) => {
-      res.json({ message: 'PakdaRe Backend API is running...', docs: '/api-docs' });
+    // ── Health check (exact root only) ──
+    app.get('/', (req, res) => {
+      res.json({
+        status: 'ok',
+        service: 'PakdaRe API',
+        version: '1.0.0',
+        env: process.env.NODE_ENV,
+      });
+    });
+
+    // ── 404 handler for ALL unknown routes ──
+    // This MUST come AFTER all real routes.
+    // Previously: app.use('/') matched everything -> info leak + no 404
+    app.use((req, res) => {
+      res.status(404).json({
+        success: false,
+        message: `Route ${req.method} ${req.originalUrl} not found`,
+      });
     });
 
     // Global Error Handler (Audit Trail)
