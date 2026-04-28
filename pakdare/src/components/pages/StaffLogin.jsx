@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { supabase } from '../../supabase';
 import { useAuth } from '../../context/AuthContext';
 import { motion } from 'framer-motion';
 
@@ -20,11 +19,9 @@ export default function StaffLogin({ showToast, onSuccess }) {
     try {
       const { error } = await login(email, password);
       if (error) throw new Error(error);
-      
+      // Role comes from the API/JWT — NOT from the UI toggle
+      // We just use the toggle as a UX hint for the welcome message
       showToast(`✅ Welcome back, ${role === 'admin' ? 'Administrator' : 'Officer'}!`, 'success');
-      
-      // Store preferred role in local storage to guide routing
-      localStorage.setItem('pakdare-role', role);
       onSuccess?.();
     } catch (err) {
       showToast(`🚫 Login failed: ${err.message}`, 'error');

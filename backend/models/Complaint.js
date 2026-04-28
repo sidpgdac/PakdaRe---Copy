@@ -79,7 +79,35 @@ const Complaint = sequelize.define('Complaint', {
     allowNull: true
   }
 }, {
-  timestamps: true // Adds createdAt and updatedAt
+  timestamps: true, // Adds createdAt and updatedAt
+
+  // ── INDEXES — Critical for performance at 1M+ rows ──────────────────
+  // Without these, every query is a full table scan (seconds at scale).
+  indexes: [
+    // Most common query: list complaints sorted by time
+    { fields: ['time'] },
+
+    // Filtered queries by ward (dashboard, map page)
+    { fields: ['ward', 'time'] },
+
+    // Filter by resolution status (most pages need unresolved only)
+    { fields: ['resolved', 'time'] },
+
+    // Admin/staff filter by status
+    { fields: ['status', 'time'] },
+
+    // Category-based reporting and analytics
+    { fields: ['category', 'severity'] },
+
+    // Combined ward + status for ward dashboards
+    { fields: ['ward', 'status'] },
+
+    // Geographic queries (map view clustering)
+    { fields: ['lat', 'lng'] },
+
+    // Demo data separation (seeded data vs real)
+    { fields: ['isDemo'] },
+  ],
 });
 
 module.exports = Complaint;

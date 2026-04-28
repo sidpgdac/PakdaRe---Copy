@@ -95,6 +95,7 @@ function AppContent() {
   const { toasts, showToast } = useToast();
   const {
     complaints, loading: dataLoading, fetchError, isDemoMode,
+    hasMore, loadMore,
     addComplaint, resolveComplaint, resolveWithPhoto,
     updateComplaint, seedDemo, clearDemo, fetchComplaintDetail, refetch,
   } = useComplaints(mode);
@@ -234,7 +235,13 @@ function AppContent() {
 
               <Route path="/gallery" element={
                 <ErrorBoundary>
-                  <PublicComplaints complaints={complaints} fetchComplaintDetail={fetchComplaintDetail} />
+                  <PublicComplaints
+                    complaints={complaints}
+                    fetchComplaintDetail={fetchComplaintDetail}
+                    hasMore={hasMore}
+                    loadMore={loadMore}
+                    loading={dataLoading}
+                  />
                 </ErrorBoundary>
               } />
 
@@ -256,8 +263,8 @@ function AppContent() {
                 <StaffLogin
                   showToast={showToast}
                   onSuccess={() => {
-                    const role = localStorage.getItem('pakdare-role');
-                    navigate(role === 'admin' ? '/admin' : '/dashboard');
+                    // Route based on actual server-side role, not localStorage
+                    navigate(user?.role === 'admin' ? '/admin' : '/dashboard');
                   }}
                 />
               } />

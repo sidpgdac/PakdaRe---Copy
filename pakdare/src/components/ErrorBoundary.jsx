@@ -11,7 +11,10 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('[PakdaRe] Page error:', error, info);
+    // Log to console in dev; Sentry picks it up in prod via main.jsx ErrorBoundary
+    if (import.meta.env.DEV) {
+      console.error('[PakdaRe] Page error:', error, info);
+    }
   }
 
   render() {
@@ -21,7 +24,7 @@ export default class ErrorBoundary extends Component {
           <div style={{ fontSize: 48 }}>⚠️</div>
           <h2 style={{ color: 'var(--text-primary)', fontSize: 18, fontWeight: 700 }}>Something went wrong</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: 13, maxWidth: 360 }}>
-            {this.state.error?.message || 'An unexpected error occurred. Please try refreshing the page.'}
+            An unexpected error occurred. Please try refreshing the page.
           </p>
           <button
             className="btn-primary"

@@ -72,7 +72,10 @@ const STEPS = ['What?', 'Where?', 'Details', 'Review'];
 
 const mkId = () => {
   const d = new Date();
-  return `BMC-${d.getDate().toString().padStart(2,'0')}${(d.getMonth()+1).toString().padStart(2,'0')}-${Math.floor(1000+Math.random()*8999)}`;
+  const dateStr = `${d.getDate().toString().padStart(2,'0')}${(d.getMonth()+1).toString().padStart(2,'0')}`;
+  // Use crypto.randomUUID() for collision-free IDs; slice last 8 chars for readability
+  const unique = (crypto.randomUUID?.() || Math.random().toString(36).slice(2)).replace(/-/g,'').slice(0, 8).toUpperCase();
+  return `BMC-${dateStr}-${unique}`;
 };
 
 function StepBar({ step }) {

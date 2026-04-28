@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { body } = require('express-validator');
 const {
   getComplaints,
   createComplaint,
@@ -9,16 +10,24 @@ const {
 } = require('../controllers/complaintController');
 
 const { protect, authorize } = require('../middleware/authMiddleware');
+const { upload } = require('../config/cloudinary');
 
-// Public routes (or modify to be protected if citizens must log in)
+const validateComplaint = [
+  body('ward').notEmpty(),
+  body('lat').isNumeric(),
+  body('lng').isNumeric(),
+  body('category').notEmpty(),
+];
+
+// Public routes
 router.route('/')
   .get(getComplaints)
-  .post(createComplaint); // e.g. citizens adding complaints
+  .post(upload.array('photos', 5), validateComplaint, createComplaint); 
 
 router.post('/seed', protect, authorize('admin'), seedComplaints);
 
 router.route('/:id')
   .get(getComplaint)
-  .put(updateComplaint); // Currently unprotected for easy dev, consider adding `protect` here
+  .put(upload.single('resolutionPhoto'), updateComplaint); 
 
 module.exports = router;

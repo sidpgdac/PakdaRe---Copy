@@ -134,7 +134,7 @@ function PublicComplaintRow({ c, isExpanded, onToggle }) {
   );
 }
 
-export default function PublicComplaints({ complaints, fetchComplaintDetail }) {
+export default function PublicComplaints({ complaints, fetchComplaintDetail, hasMore, loadMore, totalCount, loading }) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState(null);
@@ -166,9 +166,10 @@ export default function PublicComplaints({ complaints, fetchComplaintDetail }) {
     return list;
   }, [complaints, filter, search]);
 
-  const totalCount   = complaints.length;
-  const pendingCount = complaints.filter(c => !c.resolved).length;
-  const resolvedCount = complaints.filter(c => c.resolved).length;
+  // Use server-provided totalCount if available, fallback to loaded count
+  const displayTotal   = totalCount ?? complaints.length;
+  const pendingCount   = complaints.filter(c => !c.resolved).length;
+  const resolvedCount  = complaints.filter(c =>  c.resolved).length;
 
   return (
     <div className="page pg-page">
@@ -190,9 +191,9 @@ export default function PublicComplaints({ complaints, fetchComplaintDetail }) {
       {/* Summary Strip */}
       <div className="pg-summary">
         {[
-          { v: totalCount,   l: 'Total',    c: 'var(--blue2)'   },
-          { v: pendingCount, l: 'Pending',  c: 'var(--orange2)' },
-          { v: resolvedCount,l: 'Resolved', c: 'var(--green2)'  },
+          { v: displayTotal,  l: 'Total',    c: 'var(--blue2)'   },
+          { v: pendingCount,  l: 'Pending',  c: 'var(--orange2)' },
+          { v: resolvedCount, l: 'Resolved', c: 'var(--green2)'  },
         ].map((s, i) => (
           <div key={i} className="pg-sum-item">
             <div className="pg-sum-v" style={{ color: s.c }}>{s.v}</div>
@@ -241,6 +242,29 @@ export default function PublicComplaints({ complaints, fetchComplaintDetail }) {
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
             />
           ))}
+        </div>
+      )}
+
+      {/* Load More Button */}
+      {hasMore && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+          <button
+            className="btn-ghost"
+            onClick={loadMore}
+            disabled={loading}
+            style={{ minWidth: 180, justifyContent: 'center' }}
+          >
+            {loading
+              ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Loading…</>
+              : `Load More (${complaints.length} of ${displayTotal} shown)`
+            }
+          </button>
+        </div>
+      )}
+
+      {!hasMore && complaints.length > 0 && (
+        <div style={{ textAlign: 'center', padding: '16px 0', fontSize: 12, color: 'var(--text-muted)' }}>
+          ✅ All {complaints.length} complaints loaded
         </div>
       )}
     </div>

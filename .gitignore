@@ -4,3 +4,15 @@ node_modules/
 dist/
 build/
 .DS_Store
+
+# Backend logs — contain IPs and request data; never commit
+backend/logs/*.log
+logs/*.log
+
+# Editor & OS
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+Thumbs.db

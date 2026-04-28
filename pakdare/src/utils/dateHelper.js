@@ -1,8 +1,11 @@
 // Utility function to format time ago
 export function timeAgo(date) {
-  const now = new Date();
+  if (!date) return 'Unknown';
   const past = new Date(date);
+  if (isNaN(past.getTime())) return 'Unknown';
+  const now = new Date();
   const seconds = Math.floor((now - past) / 1000);
+  if (seconds < 0) return 'just now'; // future dates (clock skew)
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;

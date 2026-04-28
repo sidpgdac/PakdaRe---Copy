@@ -7,7 +7,7 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 const TIER_COLORS = ['#f59e0b', '#94a3b8', '#cd7f32'];
 
 function LevelProgressBar({ points }) {
-  const level    = getLevel(points);
+  const level = getLevel(points);
   const progress = getLevelProgress(points);
   const nextLevelIdx = LEVELS.findIndex(l => l.min > points);
   const nextLevel = nextLevelIdx !== -1 ? LEVELS[nextLevelIdx] : null;
@@ -89,7 +89,7 @@ export default function LeaderboardPage({ complaints }) {
   }, [complaints]);
 
   const cityStats = useMemo(() => ({
-    total:    complaints.length,
+    total: complaints.length,
     resolved: complaints.filter(c => c.resolved).length,
     critical: complaints.filter(c => c.severity === 'critical' && !c.resolved).length,
     activeWards: wardHealthScores.filter(w => w.totalComplaints > 0).length,
@@ -105,10 +105,10 @@ export default function LeaderboardPage({ complaints }) {
       {/* City Stats Bar */}
       <div className="ldb-city-stats">
         {[
-          { v: cityStats.total,        l: 'Reports Filed',   ico: '📋' },
-          { v: cityStats.resolved,     l: 'Issues Resolved', ico: '✅' },
-          { v: cityStats.critical,     l: 'Critical Active', ico: '🚨' },
-          { v: cityStats.activeWards,  l: 'Active Wards',    ico: '🏙️' },
+          { v: cityStats.total, l: 'Reports Filed', ico: '📋' },
+          { v: cityStats.resolved, l: 'Issues Resolved', ico: '✅' },
+          { v: cityStats.critical, l: 'Critical Active', ico: '🚨' },
+          { v: cityStats.activeWards, l: 'Active Wards', ico: '🏙️' },
         ].map((s, i) => (
           <div key={i} className="ldb-city-stat">
             <div className="ldb-city-stat-ico">{s.ico}</div>
@@ -155,10 +155,10 @@ export default function LeaderboardPage({ complaints }) {
         <div className="ldb-earn-grid">
           {[
             { pts: '+10', icon: '📋', action: 'File a complaint' },
-            { pts: '+5',  icon: '📷', action: 'Attach photo evidence' },
-            { pts: '+5',  icon: '📍', action: 'GPS-verified location' },
+            { pts: '+5', icon: '📷', action: 'Attach photo evidence' },
+            { pts: '+5', icon: '📍', action: 'GPS-verified location' },
             { pts: '+10', icon: '🚨', action: 'Emergency category report' },
-            { pts: '+5',  icon: '🔴', action: 'Critical severity report' },
+            { pts: '+5', icon: '🔴', action: 'Critical severity report' },
           ].map((e, i) => (
             <div key={i} className="ldb-earn-item">
               <span className="ldb-earn-ico">{e.icon}</span>
@@ -201,7 +201,7 @@ export default function LeaderboardPage({ complaints }) {
           {wardHealthScores.map((w, i) => {
             const scoreColor = w.healthScore >= 70
               ? 'var(--green2)' : w.healthScore >= 40
-              ? 'var(--orange2)' : 'var(--red2)';
+                ? 'var(--orange2)' : 'var(--red2)';
             const resRate = w.totalComplaints
               ? Math.round((w.resolved / w.totalComplaints) * 100) : 0;
             return (

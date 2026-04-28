@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { DEMO_COMPLAINTS } from '../data/demoData';
-import { supabase } from '../supabase';
 import { useAuth } from '../context/AuthContext';
 import { uploadComplaintPhotos, uploadResolutionPhoto } from '../utils/photoStorage';
 import exifr from 'exifr';
@@ -34,11 +33,12 @@ export function useComplaints(mode) {
         const offset = pageNum * PAGE_SIZE;
         const res = await api.get(`/complaints?offset=${offset}&limit=${PAGE_SIZE}`);
         const data = res.data.data;
+        const serverHasMore = res.data.hasMore ?? (data.length === PAGE_SIZE);
 
         if (!isMountedRef.current) return;
 
         setIsDemoMode(false);
-        setHasMore(data.length === PAGE_SIZE);
+        setHasMore(serverHasMore);  // use server truth, not a guess
         setPage(pageNum);
         if (append) {
           setComplaints(prev => {
@@ -79,15 +79,46 @@ export function useComplaints(mode) {
   // Next phase: Implement Socket.io for Node.js real-time updates.
   useEffect(() => {}, []);
 
+  const dataURLtoBlob = (dataurl) => {
+    const arr = dataurl.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  };
+
   const addComplaint = useCallback(async (c) => {
     setComplaints(prev => [c, ...prev]);
     if (mode === 'real') {
-      // Still using Supabase Storage for photos to avoid DB bloat!
-      const uploadedPhotos = await uploadComplaintPhotos(c.photos || [], c.id);
-      const payload = { ...c, photos: uploadedPhotos };
-
       try {
-        await api.post('/complaints', payload);
+        const formData = new FormData();
+        
+        // Append all text fields
+        Object.keys(c).forEach(key => {
+          if (key !== 'photos') {
+            // Handle objects like location or complex types if any
+            formData.append(key, typeof c[key] === 'object' ? JSON.stringify(c[key]) : c[key]);
+          }
+        });
+
+        // Append photos
+        if (c.photos && c.photos.length > 0) {
+          c.photos.forEach((photo, index) => {
+            if (typeof photo === 'string' && photo.startsWith('data:image')) {
+              formData.append('photos', dataURLtoBlob(photo), `photo_${index}.jpg`);
+            } else if (photo instanceof Blob || photo instanceof File) {
+              formData.append('photos', photo, `photo_${index}.jpg`);
+            }
+          });
+        }
+
+        await api.post('/complaints', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       } catch (error) {
         console.error('[PakdaRe] addComplaint error:', error);
         setComplaints(prev => prev.filter(x => x.id !== c.id));
@@ -123,21 +154,33 @@ export function useComplaints(mode) {
 
     const resolvedAt = new Date().toISOString();
 
-    // Upload resolution photo to Supabase Storage (not base64 in DB)
-    const storedPhotoUrl = await uploadResolutionPhoto(photoDataUrl, id);
-
     const update = {
       resolved: true, status: 'Resolved', resolvedAt,
-      resolutionPhoto: storedPhotoUrl,
       resolutionOfficer: officerName || 'Officer',
-      resolutionGps: resGps,
+      resolutionGps: resGps ? JSON.stringify(resGps) : null,
       gpsVerified: !!(resGps && complaint.lat),
     };
 
-    setComplaints(prev => prev.map(c => c.id === id ? { ...c, ...update } : c));
+    setComplaints(prev => prev.map(c => c.id === id ? { ...c, ...update, resolutionPhoto: photoDataUrl } : c));
+    
     if (mode === 'real') {
       try {
-        await api.put(`/complaints/${id}`, update);
+        const formData = new FormData();
+        Object.keys(update).forEach(key => {
+          if (update[key] !== null) formData.append(key, update[key]);
+        });
+
+        if (photoDataUrl) {
+          if (typeof photoDataUrl === 'string' && photoDataUrl.startsWith('data:image')) {
+            formData.append('resolutionPhoto', dataURLtoBlob(photoDataUrl), 'resolution.jpg');
+          } else {
+            formData.append('resolutionPhoto', photoDataUrl, 'resolution.jpg');
+          }
+        }
+
+        await api.put(`/complaints/${id}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
       } catch (error) {
         console.error('Update failed', error);
       }
