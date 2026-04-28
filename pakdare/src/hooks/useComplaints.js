@@ -25,7 +25,7 @@ async function runQuery(queryFn, timeoutMs = 15000) {
   }
 }
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 1048;
 
 export function useComplaints(mode) {
   const { user } = useAuth();
@@ -49,8 +49,9 @@ export function useComplaints(mode) {
 
     if (mode === 'real' && supabase) {
       const LIST_COLS = 'id,ward,location,lat,lng,category,severity,desc,status,assignedTo,time,resolved,isDemo,escalations,hierarchy,photos,resolvedAt,resolutionOfficer,resolutionGps,gpsVerified';
-      const from = pageNum * PAGE_SIZE;
-      const to   = from + PAGE_SIZE - 1;
+      
+      const from = pageNum * 1048;
+      const to   = from + 1048 - 1;
       const { data, error } = await runQuery(() =>
         supabase
           .from('complaints')
@@ -63,7 +64,7 @@ export function useComplaints(mode) {
 
       if (!error && data) {
         setIsDemoMode(false);
-        setHasMore(data.length === PAGE_SIZE);
+        setHasMore(data.length === 1048);
         setPage(pageNum);
         if (append) {
           setComplaints(prev => {

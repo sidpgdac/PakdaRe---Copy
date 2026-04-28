@@ -176,7 +176,8 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
     gps: null
   });
 
-  const [activeLayers, setActiveLayers] = useState(new Set(['bubbles', 'heatmap', 'dengue', 'malaria', 'water', 'realgps']));
+  // Default: heatmap background + ward battery indicators + clustered GPS pins.
+  const [activeLayers, setActiveLayers] = useState(new Set(['heatmap', 'bubbles', 'realgps']));
   const [basemap, setBasemap]           = useState('light');
   const [selectedWard, setSelectedWard] = useState(null);
   const [layerDDOpen, setLayerDDOpen]   = useState(false);
@@ -456,120 +457,151 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
       layersRef.current.heat = null;
     }
 
-    // 1. Rebuild Heatmap
-    const heatData = WARDS.map(w => [w.lat, w.lng, w.risk / 100]);
+    // 1. Rebuild Heatmap — use REAL complaint coordinates for accurate density.
+    // This shows where complaints actually are, not just ward centers.
+    const heatData = complaints
+      .filter(c => c.lat && c.lng)
+      .map(c => [
+        c.lat,
+        c.lng,
+        c.severity === 'critical' ? 1.0
+        : c.severity === 'severe'   ? 0.7
+        : c.severity === 'moderate' ? 0.4 : 0.2
+      ]);
     if (L.heatLayer && map.getPane('overlayPane')) {
       const heatL = L.heatLayer(heatData, {
-        radius: 45, blur: 35, maxZoom: 15, max: 1,
-        gradient: { 0: 'rgba(254,237,222,0)', 0.2: '#fdbe85', 0.4: '#fd8d3c', 0.6: '#e6550d', 0.8: '#a63603', 1: '#7f2704' }
+        radius: 22, blur: 18, maxZoom: 17, max: 1,
+        gradient: { 0: 'rgba(0,70,130,0)', 0.25: '#1a7a6e', 0.5: '#c8b800', 0.75: '#e07820', 1: '#E31E24' }
       });
       layersRef.current.heat = heatL;
       if (activeLayers.has('heatmap')) {
-        try {
-          heatL.addTo(map);
-        } catch (e) {
-          console.warn('[PakdaRe] Heatmap addition failed:', e);
-        }
+        try { heatL.addTo(map); } catch (e) { console.warn('[PakdaRe] Heatmap addition failed:', e); }
       }
     }
 
-    // 2. Rebuild Bubbles and Dots using pre-computed wardStatsMap
+    // 2. Ward Battery Markers — SVG battery where fill = % complaints resolved.
+    // Low battery = ward needs urgent attention. Critically low = urgent flash animation.
     WARDS.forEach(w => {
-      const st = wardStatsMap[w.id] || { total: 0, unresolved: 0, resolved: 0, clusters: 0, breeding: 0 };
-      const cnt = Math.max(st.total, 1);
-      const col = w.risk >= 80 ? '#E31E24' : w.risk >= 60 ? '#e07820' : w.risk >= 40 ? '#c8b800' : '#1a7a6e';
-      const bg = w.risk >= 80 ? 'rgba(227,30,36,.18)' : w.risk >= 60 ? 'rgba(224,120,32,.18)' : w.risk >= 40 ? 'rgba(200,184,0,.15)' : 'rgba(26,122,110,.15)';
-      const r = Math.max(18, Math.min(44, 14 + cnt * 0.9));
-      const sz = r * 2;
-      const isCrit = w.risk >= 80;
-      const pulseHtml = isCrit ? `
-        <div class="hud-radar" style="color:${col}"></div>
-        <div class="hud-dash-ring" style="color:${col}"></div>
-        <div class="hud-crosshair" style="color:${col}"></div>
-        <div class="marker-anim-pulse"></div>
-      ` : '';
-      const iconHtml = `
-        <div class="map-marker-container">
-          <div class="map-marker-glow" style="background:${col}; opacity: ${isCrit ? 0.8 : 0.4}; filter: blur(${isCrit ? 8 : 4}px);"></div>
-          ${pulseHtml}
-          <div class="map-marker-core" style="width:${sz}px;height:${sz}px;background:${bg};border:2px solid ${col};color:${col};font-size:${r > 28 ? 14 : 12}px;">
-            ${cnt}
-          </div>
-        </div>
-      `;
+      const st = wardStatsMap[w.id] || { total: 0, unresolved: 0, resolved: 0 };
+      if (st.total === 0) return;
+
+      const resolvedPct = st.total > 0 ? st.resolved / st.total : 0;
+
+      // Color: red = critical (mostly unresolved), green = healthy
+      const col = resolvedPct < 0.25 ? '#E31E24'
+                : resolvedPct < 0.5  ? '#e07820'
+                : resolvedPct < 0.75 ? '#c8b800'
+                : '#22c98a';
+
+      // Fill width inside the battery body (inner usable width = 26px)
+      const fillW = Math.max(2, Math.round(resolvedPct * 26));
+
+      // Animation: critical wards flash urgently, others breathe gently
+      const isCritical = resolvedPct < 0.25;
+      const animStyle = isCritical
+        ? `animation:battery-critical 0.9s ease-in-out infinite alternate;`
+        : `animation:battery-breathe 2.5s ease-in-out infinite alternate;`;
+
+      // The battery SVG — 44×20px body + 4px terminal nub
+      // Ward name sits below as a tiny monospace label
+      const html = `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:auto;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="22" viewBox="0 0 48 22">
+            <!-- Battery shell -->
+            <rect x="0.75" y="0.75" width="42.5" height="20.5" rx="4"
+              fill="rgba(5,10,24,0.85)" stroke="${col}" stroke-width="1.5"/>
+            <!-- Terminal nub -->
+            <rect x="43.5" y="7" width="4" height="8" rx="2" fill="${col}"/>
+            <!-- Fill level -->
+            <rect x="3" y="3" width="${fillW}" height="16" rx="2.5"
+              fill="${col}" style="${animStyle}opacity:0.92;"/>
+            <!-- Percentage text centered in battery -->
+            <text x="22" y="14.5"
+              font-family="'JetBrains Mono',monospace"
+              font-size="7.5" font-weight="800"
+              fill="${resolvedPct > 0.45 ? 'rgba(5,10,24,0.9)' : col}"
+              text-anchor="middle"
+              style="user-select:none;"
+            >${Math.round(resolvedPct * 100)}%</text>
+          </svg>
+          <!-- Ward name chip -->
+          <div style="
+            background:rgba(5,10,24,0.82);
+            border:1px solid ${col}55;
+            color:${col};
+            font-size:8px;font-weight:700;
+            font-family:'JetBrains Mono',monospace;
+            letter-spacing:0.4px;
+            padding:1px 6px;border-radius:20px;
+            white-space:nowrap;
+            box-shadow:0 1px 6px rgba(0,0,0,0.4);
+          ">${w.id}</div>
+        </div>`;
 
       const icon = L.divIcon({
         className: '',
-        html: iconHtml,
-        iconSize: [sz, sz], iconAnchor: [r, r], popupAnchor: [0, -r - 4]
+        html,
+        iconSize:    [48, 44],
+        iconAnchor:  [24, 22],
+        popupAnchor: [0, -28]
       });
 
-      const mk = L.marker([w.lat, w.lng], { icon });
-      mk.bindPopup(L.popup({ maxWidth: 270 }).setContent(`
-        <div class="pu-hdr" style="background:linear-gradient(135deg, ${col}dd, ${col}); color:#fff; padding:12px 16px;">
-          <div class="pu-name" style="font-size:17px;font-weight:700;">${w.full}</div>
-          <div class="pu-zone" style="font-size:11px;opacity:0.8;">${w.area} · ${w.zone}</div>
+      const mk = L.marker([w.lat, w.lng], { icon, zIndexOffset: 200 });
+      mk.bindPopup(L.popup({ maxWidth: 240 }).setContent(`
+        <div style="background:linear-gradient(135deg,${col}bb,${col}55);color:#fff;padding:10px 14px;border-radius:8px 8px 0 0;">
+          <div style="font-size:15px;font-weight:700;">${w.name}</div>
+          <div style="font-size:11px;opacity:0.85;">${w.area}</div>
         </div>
-        <div class="pu-body" style="padding:12px 16px;">
-          <div class="pu-row"><span class="pu-l">M.O.H.</span><span class="pu-v n">${w.wmo}</span></div>
-          <div class="pu-row"><span class="pu-l">S.I.</span><span class="pu-v n">${w.siTeam?.[0]?.name || 'N/A'}</span></div>
-          <div class="pu-row"><span class="pu-l">Total complaints</span><span class="pu-v r">${st.total}</span></div>
-          <div class="pu-row"><span class="pu-l">Unresolved</span><span class="pu-v o">${st.unresolved}</span></div>
-          <div class="pu-row"><span class="pu-l">Breeding sites</span><span class="pu-v o">${st.breeding}</span></div>
-          <div class="pu-row"><span class="pu-l">Risk index</span><span class="pu-v r">${w.risk}/100</span></div>
+        <div style="padding:10px 14px;background:#0a0f1e;">
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a2040;color:#8899bb;font-size:12px;">
+            <span>Resolution Rate</span><span style="color:${col};font-weight:700;">${Math.round(resolvedPct*100)}%</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a2040;color:#8899bb;font-size:12px;">
+            <span>Total</span><span style="color:#ccd6f6;font-weight:700;">${st.total}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a2040;color:#8899bb;font-size:12px;">
+            <span>Unresolved</span><span style="color:#e07820;font-weight:700;">${st.unresolved}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:4px 0;color:#8899bb;font-size:12px;">
+            <span>Resolved</span><span style="color:#22c98a;font-weight:700;">${st.resolved}</span>
+          </div>
         </div>
-        <div class="pu-btns" style="display:flex;gap:6px;padding:10px 12px;background:var(--g50);">
-          <button class="pu-btn ob" style="flex:1" data-wid="${w.id}">📊 Open Profile</button>
+        <div style="padding:6px 10px;background:#060b18;">
+          <button style="width:100%;padding:6px;background:${col}22;border:1px solid ${col}55;color:${col};border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;" data-wid="${w.id}">📊 Open Profile</button>
         </div>`));
-
       layersRef.current.bubble.addLayer(mk);
-
-      if (st.clusters > 0) {
-        [[.004, .003], [-.003, .005]].slice(0, Math.min(2, st.clusters)).forEach(([dl, dn]) => {
-          L.circleMarker([w.lat + dl, w.lng + dn], { radius: 5, fillColor: '#E31E24', color: '#fff', weight: 1.5, fillOpacity: .85 })
-            .bindTooltip('Disease cluster · ' + w.area).addTo(layersRef.current.dengue);
-        });
-      }
-      if (st.breeding > 1) {
-        L.circleMarker([w.lat - .003, w.lng + .004], { radius: 5, fillColor: '#e07820', color: '#fff', weight: 1.5, fillOpacity: .85 })
-          .bindTooltip('Malaria risk · ' + w.area).addTo(layersRef.current.malaria);
-      }
-      if (st.total > 2) {
-        L.circleMarker([w.lat + .002, w.lng - .005], { radius: 5, fillColor: '#1a7a6e', color: '#fff', weight: 1.5, fillOpacity: .85 })
-          .bindTooltip('Water issue · ' + w.area).addTo(layersRef.current.water);
-      }
     });
 
-    // 3. Rebuild GPS pins (inside-Mumbai bounds only) — tap opens photo sheet
+
+
+
+
+    // 3. Rebuild GPS pins as clean L.marker with minimal dot icon so
+    // MarkerClusterGroup can auto-group them into smart clusters.
+    // L.circleMarker does NOT work with markerCluster — must use L.marker.
     complaints.forEach(c => {
       if (!c.lat || !c.lng) return;
       if (c.lat < MUMBAI_BOUNDS[0][0] || c.lat > MUMBAI_BOUNDS[1][0] || c.lng < MUMBAI_BOUNDS[0][1] || c.lng > MUMBAI_BOUNDS[1][1]) return;
-      const col = c.severity === 'critical' ? '#E31E24' : c.severity === 'severe' ? '#e07820' : c.severity === 'moderate' ? '#c8b800' : '#1a7a6e';
-      // Next-level GPS pin with micro-interactions
-      const isRes = c.status === 'Resolved';
-      const animClass = isRes ? '' : (c.severity === 'critical' ? 'marker-anim-pulse' : 'marker-anim-breathe');
-      const rippleHtml = (!isRes && c.severity === 'critical') ? `
-        <div class="hud-radar" style="color:${col}"></div>
-        <div class="hud-crosshair" style="color:${col}; inset:-8px"></div>
-        <div class="marker-anim-ripple" style="color:${col}; opacity: 0.5;"></div>
-      ` : '';
-      
-      const pinHtml = `
-        <div class="map-marker-container" style="width:44px; height:44px; cursor:pointer; opacity: ${isRes ? 0.6 : 1};">
-          <div class="map-marker-glow" style="background:${col}; width:20px; height:20px; top:12px; left:12px; filter: blur(6px);"></div>
-          ${rippleHtml}
-          <div class="map-marker-core ${animClass}" style="width:16px;height:16px;background:${col};border:2px solid #fff; position:absolute; top:14px; left:14px;"></div>
-        </div>
-      `;
 
+      const col = c.severity === 'critical' ? '#E31E24'
+                : c.severity === 'severe'   ? '#e07820'
+                : c.severity === 'moderate' ? '#c8b800'
+                : '#1a7a6e';
+      const isRes = c.status === 'Resolved';
+      const sz = c.severity === 'critical' ? 14
+               : c.severity === 'severe'   ? 12
+               : c.severity === 'moderate' ? 10 : 9;
+      const half = sz / 2;
+
+      // Clean minimal dot — no animations, no glow divs, just a crisp circle
       const pinIcon = L.divIcon({
         className: '',
-        html: pinHtml,
-        iconSize: [44, 44],
-        iconAnchor: [22, 22],
+        html: `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:${col};border:1.5px solid rgba(255,255,255,0.85);box-shadow:0 1px 4px rgba(0,0,0,0.4);opacity:${isRes ? 0.5 : 1};"></div>`,
+        iconSize: [sz, sz],
+        iconAnchor: [half, half],
       });
       const pin = L.marker([c.lat, c.lng], { icon: pinIcon });
-      pin.bindTooltip('📍 ' + (c.location || 'Citizen report'));
+      pin.bindTooltip(`📍 ${c.location || 'Citizen report'} · ${c.severity}`, { sticky: true });
       pin.on('click', () => {
         setComplaintSheetId(c.id);
         setComplaintSheetData(c);
@@ -1145,13 +1177,7 @@ export default function MapPage({ complaints, onWardClick, fetchComplaintDetail,
         </div>
       </div>
 
-      {/* ── REPORT FAB — always visible on map ──────────────── */}
-      {onOpenReport && (
-        <button className="map-report-fab" onClick={onOpenReport} aria-label="Report a health issue">
-          <span style={{ fontSize: 22 }}>➕</span>
-          <span className="map-report-fab-label">Report Issue</span>
-        </button>
-      )}
+
 
       {/* ══════════════════════════════════════════════
           COMPLAINT PHOTO BOTTOM SHEET

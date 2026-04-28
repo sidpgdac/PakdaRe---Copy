@@ -175,8 +175,8 @@ export default function AssistiveTouch({ navigate, onOpenReport }) {
         onDragEnd={handleDragEnd}
         style={{
           position: 'fixed',
-          bottom: 100,
-          right: 24,
+          bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))',
+          right: 16,
           zIndex: 6000,
           touchAction: 'none',
           x, y,
