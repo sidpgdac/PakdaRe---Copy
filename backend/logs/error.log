@@ -1,0 +1,5 @@
+{"level":"error","message":"500 - Request Timeout - /api/complaints - POST - ::1","service":"pakdare-backend","timestamp":"2026-04-27 17:54:56"}
+{"level":"error","message":"400 - Expected property name or '}' in JSON at position 1 (line 1 column 2) - /api/auth/register - POST - ::1","service":"pakdare-backend","timestamp":"2026-04-27 19:38:31"}
+{"level":"error","message":"400 - Expected property name or '}' in JSON at position 1 (line 1 column 2) - /api/auth/register - POST - ::1","service":"pakdare-backend","timestamp":"2026-04-27 19:38:41"}
+{"level":"error","message":"400 - Expected property name or '}' in JSON at position 1 (line 1 column 2) - /api/auth/login - POST - ::1","service":"pakdare-backend","timestamp":"2026-04-27 19:38:41"}
+{"level":"error","message":"500 - CORS policy: Origin https://evil-hacker.com is not allowed - /api/complaints?limit=1 - GET - ::1","service":"pakdare-backend","timestamp":"2026-04-28 13:16:39"}
